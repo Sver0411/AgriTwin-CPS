@@ -1,0 +1,75 @@
+# Reproducibility and artifact contract
+
+From a fresh checkout, install with Python 3.11 and
+`uv sync --frozen --extra dev --extra ui --no-editable`, then activate `.venv`.
+Omit `--extra ui` if the interface is unnecessary. Installation needs package downloads; all
+subsequent simulations run offline. `uv.lock` records resolved versions. Alternative pip installs
+follow dependency constraints but need not resolve identically to the lockfile.
+
+For source edits, reinstall the wheel using the README command before executing tests/experiments.
+The reference installation uses a regular wheel because hidden editable `.pth` files on some
+macOS environments can prevent source-path discovery. This issue is independent of the model.
+
+## Randomness and fair comparisons
+
+A seed creates six independent streams through `SeedSequence.spawn(6)`. Every exogenous draw is
+precomputed at fixed shape before control. Repeated runs with the same configuration, seed,
+controller and numerical environment produce equal trajectories. Byte-identical metadata is not
+expected: timestamps, Git status and output directories can differ. Floating point and library
+versions can change results across platforms; no cross-platform bitwise guarantee is made.
+
+Reference evaluation seeds are 101,202,303,404,505. Reserved development seeds are 11,22,33 in
+`configs/tuning.yaml`. No seed is selected after observing a favorable outcome. No external data
+are downloaded or claimed. Independent truth/twin priors are explicit in resolved configuration.
+
+## Per-run files
+
+| File | Content |
+|---|---|
+| config.yaml | Fully resolved validated configuration; seeds reduced to actual single seed |
+| metadata.json | Schema version, UTC creation time, package/Python versions, source SHA256 hashes, Git state, controller and seed, config hash |
+| schema.json | Units, missing-value and time conventions, event-table descriptions |
+| trajectory.csv | Left endpoints; true/sensor/observed/estimated/remote states; timestamps, ages, missing counts, disturbances, commands, actual actions, faults |
+| terminal_state.json | Plant state after the final interval (not counted again in metrics) |
+| observation_events.csv | Per-component timestamp/range/finite validation outcomes |
+| communication_events.csv | Per-message local/remote lifecycle with generation/send/schedule/receive/resolution times and status |
+| actuator_events.csv | Due commands, execution timestamps and applied/limited/failed status |
+| recovery_events.csv | Deterministic window bounds, recovery/resync delays and censoring |
+| metrics.json | Computed scalar simulation metrics; null when not applicable |
+| trajectory.png | Computed states, commands/actions, scaled errors and fault timeline unless disabled |
+
+`source_sha256` hashes actual executing package Python files, including regular wheel installs.
+Git metadata describes the launch working directory; launch from this project root to associate
+it with the repository. Git state can be dirty during development; source hashes and saved
+configuration remain the precise execution provenance. No user identity or hostname is recorded.
+Time fields in event tables are integer simulation steps; convert via `dt_seconds` in config.
+
+`sensor_*` is the raw reading generated this step, before link delivery. `observed_*` is the latest
+newly accepted component delivered this step, NaN otherwise. `observed_timestamp_*_step` holds the
+cache's most recent valid generation time, or −1 if never valid. Cached values can persist across
+missing samples; the baseline uses this cache, with its explicit age constraint. `estimated_*`
+is after correction at this step. `remote_*` is the last accepted remote telemetry state and can
+be stale; `sync_error_*` compares it with the current local estimate. Values and ages must be read
+together. `local_control_executed` means a decision was scheduled, not that an action succeeded.
+
+Each trajectory row uses channel units specified in schema.json: temperature °C, humidity %RH,
+moisture fraction; actions in `[0,1]`, solar/evapotranspiration dimensionless proxies.
+CSV NaN is an empty cell; JSON missing metrics are null. They must never be converted into a
+zero observation or zero recovery time. Event tables keep headers even when empty.
+
+## Experiment files
+
+Each experiment contains `<scenario>/seed_<seed>/<controller>/` run directories plus:
+`per_seed.csv`, `summary.csv`, `paired_differences.csv`, `paired_summary.csv`, `failure_cases.csv`,
+`metadata.json` and `comparison.png` (unless disabled). Summary has mean, sample SD, valid/total/
+missing counts. Paired differences use twin minus threshold for matching seeds. `--summary-plots-only`
+skips per-run figures while retaining all raw data, events, metrics and comparison figures.
+
+Output directories must be empty. The runner refuses accidental overwrite. A failed run can leave
+partial artifacts; use a new output directory after fixing it and preserve diagnostics. There is
+no automatic resume or distributed execution. The optional interface offers an in-memory ZIP
+with configuration, trajectories, events, metrics and schema; use CLI output for full provenance.
+
+Generated results, virtual environments, caches and build artifacts are ignored by Git.
+Only `results/.gitkeep` is versioned there. The MIT license covers this project's source; installed
+dependencies retain their own licenses. No credentials are required or embedded.

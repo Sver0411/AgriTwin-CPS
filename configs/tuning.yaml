@@ -1,0 +1,5 @@
+# Reserved development scenarios; do not pool these seeds with reference evaluation.
+name: tuning
+steps: 288
+dt_seconds: 300
+seeds: [11, 22, 33]

@@ -75,3 +75,30 @@ def test_cli_scripts(script, args, tmp_path):
         timeout=90,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_empty_observation_events_still_have_schema(tmp_path):
+    target = tmp_path / "delayed"
+    cfg = SimulationConfig(steps=4, sensor={"delay_steps": 10}, actuator={"delay_steps": 10})
+    metrics = write_run(cfg, 7, "threshold", target, plots=False)
+    observations = pd.read_csv(target / "observation_events.csv")
+    actuators = pd.read_csv(target / "actuator_events.csv")
+    assert observations.empty and "reason" in observations
+    assert actuators.empty and "status" in actuators
+    assert metrics["pending_actuator_command_count"] == 4
+    assert metrics["valid_observation_coverage_temperature"] == 0
+    assert (
+        json.loads((target / "schema.json").read_text())["metric_units"]["mae_temperature"]
+        == "degC"
+    )
+
+
+def test_provenance_does_not_require_git(monkeypatch):
+    from agritwin_cps.simulation.runner import environment_metadata
+
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("git unavailable")
+
+    monkeypatch.setattr(subprocess, "run", unavailable)
+    metadata = environment_metadata()
+    assert metadata["git_commit"] is None and metadata["source_sha256"]

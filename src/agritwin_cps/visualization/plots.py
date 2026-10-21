@@ -55,20 +55,35 @@ def save_trajectory(frame: pd.DataFrame, path: Path) -> None:
 
 
 def save_comparison(summary: pd.DataFrame, path: Path) -> None:
-    metrics = (
-        "temperature_violation_seconds",
-        "moisture_violation_seconds",
-        "mae_temperature",
-        "irrigation_amount_fraction",
+    panels = (
+        ("temperature_violation_seconds", "Temperature outside safe range (s)"),
+        ("moisture_violation_seconds", "Soil moisture outside safe range (s)"),
+        ("mae_temperature", "Temperature estimation MAE (°C)"),
+        ("irrigation_amount_fraction", "Irrigation input proxy (fraction)"),
     )
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8), layout="constrained")
-    for ax, metric in zip(axes.flat, metrics, strict=True):
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7), layout="constrained")
+    controllers = ("threshold", "twin_assisted")
+    for ax, (metric, title) in zip(axes.flat, panels, strict=True):
         selected = summary[summary.metric == metric]
-        labels = selected.scenario + "\n" + selected.controller
-        positions = np.arange(len(selected))
-        ax.bar(positions, selected["mean"], yerr=selected["std"].fillna(0), capsize=2)
-        ax.set_xticks(positions, labels, rotation=75, fontsize=7)
-        ax.set_title(metric + " (mean ± sample SD)")
-    fig.suptitle("Simulation controller comparison; paired seeds")
+        cases = selected.scenario.drop_duplicates().tolist()
+        positions = np.arange(len(cases))
+        for i, controller in enumerate(controllers):
+            values = (
+                selected[selected.controller == controller].set_index("scenario").reindex(cases)
+            )
+            ax.bar(
+                positions + (i - 0.5) * 0.36,
+                values["mean"],
+                width=0.36,
+                yerr=values["std"].fillna(0),
+                capsize=3,
+                label=controller,
+            )
+        prefix = str(selected.experiment.iloc[0]) + "_" if "experiment" in selected else ""
+        labels = [case.removeprefix(prefix) for case in cases]
+        ax.set_xticks(positions, labels, rotation=25 if len(cases) > 1 else 0, fontsize=9)
+        ax.set_title(title)
+        ax.legend(fontsize=8)
+    fig.suptitle("Simulation controller comparison — mean ± sample SD, paired seeds")
     fig.savefig(path, dpi=140)
     plt.close(fig)

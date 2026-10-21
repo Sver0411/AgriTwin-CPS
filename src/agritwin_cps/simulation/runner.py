@@ -28,7 +28,10 @@ def write_json(path: Path, value) -> None:
 
 def environment_metadata() -> dict:
     def git(*args):
-        result = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+        try:
+            result = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+        except OSError:
+            return None
         return result.stdout.strip() if result.returncode == 0 else None
 
     # Only repository hashes/status are recorded; no local identity, hostname or absolute paths.
