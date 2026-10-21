@@ -38,6 +38,8 @@ def transition(
     noise=None,
 ) -> np.ndarray:
     """Pure transition; shared equations do not imply sharing plant state with the twin."""
+    if not 0 < dt_seconds <= 300:
+        raise ValueError("dt_seconds must lie in (0, 300]")
     x = np.asarray(state, dtype=float)
     if x.shape != (3,) or not np.isfinite(x).all():
         raise ValueError("state must contain three finite components")
@@ -57,4 +59,6 @@ def transition(
         ]
     )
     perturbation = np.zeros(3) if noise is None else np.asarray(noise, dtype=float)
+    if perturbation.shape != (3,) or not np.isfinite(perturbation).all():
+        raise ValueError("process noise must contain three finite components")
     return np.clip(x + dt_seconds / 3600 * rates + perturbation, LOWER, UPPER)

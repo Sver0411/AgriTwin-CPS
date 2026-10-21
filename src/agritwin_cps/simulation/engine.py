@@ -110,8 +110,13 @@ def simulate(config: SimulationConfig, seed: int, strategy: Strategy) -> Simulat
     remote.finalize(config.steps)
     return SimulationResult(
         pd.DataFrame(rows),
-        pd.DataFrame(actuator.events),
-        pd.DataFrame(cache.events),
+        pd.DataFrame(
+            actuator.events,
+            columns=["generated_step", "execution_step", "status", "ventilation", "irrigation"],
+        ),
+        pd.DataFrame(
+            cache.events, columns=["received_step", "generated_step", "channel_index", "reason"]
+        ),
         true_state.tolist(),
         pd.DataFrame(local.events + remote.events),
     )
