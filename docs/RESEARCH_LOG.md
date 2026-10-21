@@ -26,3 +26,25 @@ All results are generated from the documented uncalibrated proxy model. No publi
 or physical hardware experiment has occurred. No published-work comparison, optimality or
 innovation conclusion is recorded. Future parameter changes must distinguish development cases
 from inspected evaluation cases.
+
+## 2026-10-21 — Research laboratory interface
+
+The optional Streamlit application now separates overview, configuration/execution, state/fault
+analysis and experiment comparison. Its neutral white/black/gray presentation preserves distinct
+scientific traces and evidence labels. The simulation engine, controllers, estimator algorithms,
+metric definitions and dependency set are unchanged.
+
+Interactive runs use the existing artifact writer. Completed experiments persist locally with
+configuration, seeds, source metadata and a completion manifest. Draft edits, failed attempts and
+saved results have separate state. Browser testing exposed stale hidden sensor controls during
+preset changes; explicit widget-state assignment corrected their synchronization.
+
+Validation: 39 tests passed; Ruff lint and formatting checks passed. Nominal, missing-observation,
+communication-outage and three-seed paired controller CLI runs completed. A browser-driven
+missing-observation experiment produced six runs with the configured noise/dropout values, and
+its JSON download matched the saved result data. Desktop (1280 px) and narrow (600 px) layouts
+were inspected. Validation logs and screenshots remain local in `results/ui_upgrade_validation/`.
+
+Fault windows are not presented as detections. Fallback conditions are derived from recorded
+input validity/ages; no new drift/stuck detector is claimed. A single valid seed has undefined
+sample SD. No confidence interval or empirical greenhouse validation was added.

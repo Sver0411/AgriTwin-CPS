@@ -67,8 +67,13 @@ skips per-run figures while retaining all raw data, events, metrics and comparis
 
 Output directories must be empty. The runner refuses accidental overwrite. A failed run can leave
 partial artifacts; use a new output directory after fixing it and preserve diagnostics. There is
-no automatic resume or distributed execution. The optional interface offers an in-memory ZIP
-with configuration, trajectories, events, metrics and schema; use CLI output for full provenance.
+no automatic resume or distributed execution. The optional interface now uses the same per-run writer, preserving the same configurations,
+events, metrics, schemas and source/environment provenance. Successful interactive experiments
+are stored under `results/ui_runs/<id>/`, with `experiment.json` written only after completion.
+This manifest supports refresh recovery; draft settings remain separate and do not alter saved
+results. CSV/JSON and a prepared ZIP export these artifacts. Existing CLI groups remain readable
+in the comparison workspace. Set `AGRITWIN_RESULTS_DIR` to use an alternate local results root.
+The interface adds no new statistical definitions or dependencies.
 
 Generated results, virtual environments, caches and build artifacts are ignored by Git.
 Only `results/.gitkeep` is versioned there. The MIT license covers this project's source; installed

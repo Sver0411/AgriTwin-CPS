@@ -92,11 +92,37 @@ See [output conventions](docs/REPRODUCIBILITY.md) and [metric formulas](docs/MET
 streamlit run app.py
 ```
 
-Select a preset, review/edit the resolved YAML, choose the seed, duration and controllers, then
-press **Run experiment**. The interface runs the same core engine and displays state trajectories,
-commands versus actions, fault timelines, estimation errors, metrics and recovery events.
-Download individual CSVs or the full in-memory experiment ZIP. CLI artifacts additionally record
-environment/source provenance and are the reference path for research reproduction.
+The **Digital Twin Research Laboratory** has four workspaces:
+
+- **Overview**: last successful experiment, actual state/MAE/violation metrics, and system data flow.
+- **Simulation Lab**: six existing scenario presets, duration/time step/seeds, controller/estimator
+  selection, noise/dropout and fault settings. Full YAML is optional under **Advanced Settings**.
+- **State & Fault Analysis**: a shared time window for state layers, channel-specific errors,
+  event evidence and requested/actual actions. Missing observations remain unconnected points.
+- **Experiment Comparison**: actual UI or CLI results, every seed, mean/sample SD, paired deltas,
+  censor counts and CSV/JSON downloads. One valid seed has undefined SD, not zero SD.
+
+Select **Run Simulation** to execute; editing a control never starts an experiment. Results retain
+an explicit saved configuration and a changed-draft warning. A failed attempt preserves the last
+successful experiment and offers diagnostics. The white/black/gray theme uses a small blue accent
+for scientific traces and distinct line/marker styles, rather than winner/loser color cues.
+
+The interface calls the existing artifact runner and reads its saved metrics and trajectories;
+it does not implement a second model or metric definition. Successful experiments persist under
+`results/ui_runs/` with a completion manifest, per-seed artifacts, configurations, source/environment
+metadata and summaries. Refresh restores the latest successful experiment; the sidebar can restore
+older runs. Draft inputs persist across workspace navigation in the browser session, but a browser
+refresh starts a fresh draft. Partial failed runs are never restored as successful results.
+
+Export CSV/JSON or prepare a complete experiment ZIP. Existing CLI experiment directories under
+`results/` are available in Experiment Comparison. Set `AGRITWIN_RESULTS_DIR` before starting the
+app to choose a different local results root. Nothing is uploaded by the interface.
+
+Evidence labels separate configured windows, recorded conditions, validation rejection, derived
+fallback conditions and observed recovery. There is no automatic drift/stuck-at detector. Fallback
+is derived from recorded input validity and age, not inferred from command values. Random dropout
+and injected missing values share NaN generation records, so their overlapping causes cannot be
+separated. Model-only estimates also obey the configured prediction-age fallback limit.
 
 ## Validate
 
