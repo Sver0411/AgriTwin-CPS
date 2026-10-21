@@ -1,0 +1,7 @@
+name: nominal
+steps: 576
+dt_seconds: 300
+seeds: [101, 202, 303, 404, 505]
+sensor:
+  noise_std: [0, 0, 0]
+process_noise_std_per_sqrt_h: [0, 0, 0]

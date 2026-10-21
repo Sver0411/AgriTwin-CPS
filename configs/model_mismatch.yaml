@@ -1,0 +1,11 @@
+name: model_mismatch
+steps: 576
+seeds: [101, 202, 303, 404, 505]
+twin:
+  solar_heat_c_per_h: 2.0
+  moisture_loss_per_h: 0.006
+sensor:
+  faults:
+    - {channel: temperature, kind: missing, start_step: 120, end_step: 156}
+    - {channel: humidity, kind: missing, start_step: 120, end_step: 156}
+    - {channel: moisture, kind: missing, start_step: 120, end_step: 156}

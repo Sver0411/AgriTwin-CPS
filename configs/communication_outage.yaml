@@ -1,0 +1,11 @@
+name: communication_outage
+steps: 576
+seeds: [101, 202, 303, 404, 505]
+communication:
+  remote:
+    packet_loss: 0.1
+    delay_steps: 2
+    jitter_steps: 3
+    max_age_steps: 5
+    outages:
+      - {start_step: 120, end_step: 192}

@@ -1,0 +1,7 @@
+name: sensor_drift
+steps: 576
+seeds: [101, 202, 303, 404, 505]
+sensor:
+  faults:
+    - {channel: temperature, kind: drift, magnitude: 0.4, start_step: 120, end_step: 264}
+    - {channel: moisture, kind: bias, magnitude: -0.08, start_step: 120, end_step: 264}

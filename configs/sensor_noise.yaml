@@ -1,0 +1,5 @@
+name: sensor_noise
+steps: 576
+seeds: [101, 202, 303, 404, 505]
+sensor:
+  noise_std: [1.5, 7.5, 0.05]

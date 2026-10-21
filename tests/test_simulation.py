@@ -24,3 +24,29 @@ def test_independent_prior_when_all_sensors_absent():
         # Different hidden plant states cannot alter the twin without observations.
         assert np.array_equal(a[f"estimated_{channel}"], b[f"estimated_{channel}"])
         assert a[f"observed_{channel}"].isna().all()
+
+
+def test_remote_outage_never_stops_or_changes_local_control():
+    cfg = SimulationConfig(steps=60)
+    remote_fault = cfg.model_dump()
+    remote_fault["communication"]["remote"]["outages"] = [{"start_step": 10, "end_step": 40}]
+    a = simulate(cfg, 4, "twin_assisted").trajectory
+    b = simulate(SimulationConfig.model_validate(remote_fault), 4, "twin_assisted").trajectory
+    for field in ("true_temperature", "estimated_moisture", "command_irrigation"):
+        assert np.array_equal(a[field], b[field])
+    assert b.local_control_executed.all()
+    assert not b.loc[10:39, "remote_received"].any()
+    assert b.loc[40, "remote_received"]
+    assert b.loc[40, "remote_age_steps"] == 0
+
+
+def test_delayed_observation_expiry_and_fallback():
+    cfg = SimulationConfig(
+        steps=50, sensor={"delay_steps": 10}, controller={"max_prediction_age_steps": 3}
+    )
+    result = simulate(cfg, 2, "twin_assisted")
+    f = result.trajectory
+    assert f.observed_temperature.isna().all()
+    assert (f.loc[3:, "command_irrigation"] == 0).all()
+    assert (f.loc[3:, "command_ventilation"] == 0.5).all()
+    assert "expired" in set(result.communication_events.status)
