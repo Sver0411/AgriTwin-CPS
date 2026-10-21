@@ -1,0 +1,5 @@
+# All defaults are uncalibrated simulation assumptions. Units: docs/MODEL_ASSUMPTIONS.md.
+name: nominal
+steps: 576
+dt_seconds: 300
+seeds: [101, 202, 303, 404, 505]
