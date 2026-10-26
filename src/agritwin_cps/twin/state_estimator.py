@@ -61,7 +61,7 @@ class StateEstimator:
         self.observations = ObservationCache(config.max_observation_age_steps)
         self.missing_steps = np.zeros(3, dtype=int)
 
-    def correct(self, packets: list[Observation], step: int) -> np.ndarray:
+    def correct(self, packets: list[Observation], step: int, weights=None) -> np.ndarray:
         accepted = self.observations.update(packets, step)
         used = np.isfinite(accepted) & (self.config.method == "observation_corrected")
         self.missing_steps = np.where(used, 0, self.missing_steps + 1)
@@ -77,5 +77,9 @@ class StateEstimator:
             return np.full(3, step + 1)
         return self.observations.ages(step)
 
-    def predict(self, applied: Action, disturbance: Disturbance) -> None:
-        self.state = transition(self.state, applied, disturbance, self.parameters, self.dt_seconds)
+    def predict(self, applied: Action, disturbance: Disturbance, elapsed_seconds=None) -> None:
+        remaining = self.dt_seconds if elapsed_seconds is None else elapsed_seconds
+        while remaining > 0:
+            dt = min(300, remaining)
+            self.state = transition(self.state, applied, disturbance, self.parameters, dt)
+            remaining -= dt

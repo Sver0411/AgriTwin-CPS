@@ -1,0 +1,13 @@
+import:
+  dataset_id: mendeley-54htxm94bv-v2-train-20221125-30
+  origin: public_measurements
+  source_url: https://data.mendeley.com/datasets/54htxm94bv/2
+  license: CC BY 4.0
+  columns: {temperature: temperature}
+  expected_interval_seconds: 300
+replay:
+  partition: development
+  development_end_time: '2022-12-23T00:00:00+02:00'
+  max_gap_seconds: 3600
+  dropout_probability: 0.2
+  delay_rows: 2

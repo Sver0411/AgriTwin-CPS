@@ -13,6 +13,7 @@ from agritwin_cps.ui.diagnostics import evidence_timeline, fallback_conditions
 from agritwin_cps.ui.workspace import (
     RunRecord,
     comparison_json,
+    comparison_sources,
     execute_experiment,
     experiment_archive,
 )
@@ -89,3 +90,16 @@ def test_no_fault_events_or_missing_observation_lines_are_invented(tmp_path):
     import matplotlib.pyplot as plt
 
     plt.close(figure)
+
+
+def test_comparison_sources_require_ui_completion_but_preserve_cli_discovery(tmp_path):
+    cli = tmp_path / "cli_experiment"
+    ui = tmp_path / "ui_runs" / "interrupted"
+    for directory in (cli, ui):
+        directory.mkdir(parents=True)
+        # Discovery fixtures only: no simulated outcomes are asserted by these empty files.
+        (directory / "per_seed.csv").touch()
+        (directory / "summary.csv").touch()
+    assert comparison_sources(tmp_path) == [cli]
+    (ui / "experiment.json").write_text("{}")
+    assert set(comparison_sources(tmp_path)) == {cli, ui}

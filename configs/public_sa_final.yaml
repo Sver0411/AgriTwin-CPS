@@ -1,0 +1,23 @@
+# Input is the final_evaluation.csv emitted by scripts/prepare_public_data.py.
+import:
+  dataset_id: mendeley-54htxm94bv-v2-test-20221228-30
+  origin: public_measurements
+  source_url: https://data.mendeley.com/datasets/54htxm94bv/2
+  license: CC BY 4.0
+  columns: {temperature: temperature}
+  temperature_unit: C
+  missing_policy: preserve
+  expected_interval_seconds: 300
+replay:
+  partition: final_evaluation
+  development_end_time: '2022-12-23T00:00:00+02:00'
+  max_gap_seconds: 3600
+  dropout_probability: 0.2
+  delay_rows: 2
+  # Deliberate constant assumptions, not mapped field measurements or calibrated forcing.
+  assumed_outdoor_temperature_c: 21
+  assumed_outdoor_humidity_pct: 65
+  assumed_solar_proxy: 0
+  assumed_evapotranspiration_proxy: 0.25
+  assumed_ventilation: 0
+  assumed_irrigation: 0

@@ -23,7 +23,12 @@ from agritwin_cps.simulation.engine import SimulationResult
 from agritwin_cps.simulation.runner import environment_metadata, write_json, write_run
 
 CONTROLLERS = {"threshold": "Threshold control", "twin_assisted": "Twin-assisted control"}
-ESTIMATORS = {"observation_corrected": "Observation-corrected", "model_only": "Model-only"}
+ESTIMATORS = {
+    "observation_corrected": "Observation-corrected",
+    "model_only": "Model-only",
+    "ekf": "EKF",
+    "trust_ekf": "可信度加权 EKF",
+}
 PRESETS = {
     "Nominal Operation": "nominal.yaml",
     "Sensor Noise": "sensor_noise.yaml",
@@ -81,6 +86,11 @@ def load_run(directory: Path) -> RunRecord:
             terminal[k] for k in ("temperature_c", "humidity_pct", "moisture_fraction")
         ],
         communication_events=pd.read_csv(directory / "communication_events.csv"),
+        **{
+            name: pd.read_csv(directory / f"{name}.csv")
+            for name in ("health_events", "estimator_events", "sampling_events")
+            if (directory / f"{name}.csv").exists()
+        },
     )
     return RunRecord(
         directory,
@@ -185,6 +195,14 @@ def comparison_sources(results_root: Path) -> list[Path]:
             p.parent
             for p in results_root.rglob("per_seed.csv")
             if (p.parent / "summary.csv").exists()
+            and (
+                not p.parent.is_relative_to(results_root / "ui_runs")
+                or (p.parent / "experiment.json").is_file()
+            )
+            and (
+                not p.parent.is_relative_to(results_root / "adaptive_runs")
+                or (p.parent / "adaptive_experiment.json").is_file()
+            )
         ),
         reverse=True,
     )

@@ -62,22 +62,24 @@ def save_comparison(summary: pd.DataFrame, path: Path) -> None:
         ("irrigation_amount_fraction", "Irrigation input proxy (fraction)"),
     )
     fig, axes = plt.subplots(2, 2, figsize=(12, 7), layout="constrained")
-    controllers = ("threshold", "twin_assisted")
+    controllers = summary.controller.drop_duplicates().tolist()
     for ax, (metric, title) in zip(axes.flat, panels, strict=True):
         selected = summary[summary.metric == metric]
         cases = selected.scenario.drop_duplicates().tolist()
         positions = np.arange(len(cases))
+        width = 0.8 / len(controllers)
         for i, controller in enumerate(controllers):
             values = (
                 selected[selected.controller == controller].set_index("scenario").reindex(cases)
             )
             ax.bar(
-                positions + (i - 0.5) * 0.36,
+                positions + (i - (len(controllers) - 1) / 2) * width,
                 values["mean"],
-                width=0.36,
-                yerr=values["std"].fillna(0),
+                width=width,
+                yerr=values["std"],
                 capsize=3,
                 label=controller,
+                color=("#8E8E93", "#1D1D1F", "#0071E3", "#AEAEB2", "#636366")[i % 5],
             )
         prefix = str(selected.experiment.iloc[0]) + "_" if "experiment" in selected else ""
         labels = [case.removeprefix(prefix) for case in cases]
@@ -295,10 +297,20 @@ def metric_comparison_figure(
     unit: str,
 ):
     """Show every seed, mean/sample SD, and available paired deltas; always include zero."""
-    colors = {"threshold": "#8E8E93", "twin_assisted": "#1D1D1F"}
-    labels = {"threshold": "Threshold", "twin_assisted": "Twin-assisted"}
+    controllers = per_seed.controller.drop_duplicates().tolist()
+    palette = ("#8E8E93", "#1D1D1F", "#0071E3", "#AEAEB2", "#636366", "#48484A")
+    colors = {c: palette[i % len(palette)] for i, c in enumerate(controllers)}
+    friendly = {
+        "threshold": "Threshold",
+        "twin_assisted": "Twin-assisted",
+        "observation_corrected": "Fixed-gain",
+        "model_only": "Model-only",
+        "ekf": "EKF",
+        "trust_ekf": "Trust-EKF",
+        "trust_change": "Trust + change",
+    }
+    labels = {c: friendly.get(c, c) for c in controllers}
     seeds = sorted(per_seed.seed.unique())
-    controllers = [c for c in colors if c in set(per_seed.controller)]
     has_pairs = not paired.empty and metric in paired and paired[metric].notna().any()
     with plt.rc_context(RESEARCH_STYLE):
         fig, axes = plt.subplots(1, 3 if has_pairs else 2, figsize=(12, 3.8), layout="constrained")
@@ -309,7 +321,7 @@ def metric_comparison_figure(
                 positions,
                 values[metric],
                 color=colors[controller],
-                marker=("o", "s")[i],
+                marker=("o", "s", "^", "D", "x", "+")[i % 6],
                 s=35,
                 label=labels[controller],
             )
@@ -326,18 +338,83 @@ def metric_comparison_figure(
         axes[0].set_xlabel("Random seed")
         axes[0].set_title("Individual seeds", loc="left")
         axes[0].legend(fontsize=8)
-        axes[1].set_xticks(range(len(controllers)), [labels[c] for c in controllers])
+        axes[1].set_xticks(
+            range(len(controllers)),
+            [labels[c] for c in controllers],
+            rotation=25 if len(controllers) > 2 else 0,
+            ha="right" if len(controllers) > 2 else "center",
+        )
         axes[1].set_title("Mean ± sample SD", loc="left")
         if has_pairs:
-            valid = paired.set_index("seed").reindex(seeds)
-            axes[2].scatter(range(len(seeds)), valid[metric], color="#0071E3", s=35)
-            axes[2].set_xticks(
-                range(len(seeds)), [str(s) for s in seeds], rotation=30 if len(seeds) > 5 else 0
-            )
+            for j, (pair, records) in enumerate(paired.groupby("controller", sort=False)):
+                valid = records.set_index("seed").reindex(seeds)
+                axes[2].scatter(
+                    np.arange(len(seeds)) + j * 0.1,
+                    valid[metric],
+                    color=palette[j % len(palette)],
+                    s=30,
+                    label=" − ".join(friendly.get(part, part) for part in pair.split("_minus_")),
+                )
+            axes[2].set_xticks(range(len(seeds)), [str(s) for s in seeds])
             axes[2].set_xlabel("Paired random seed")
-            axes[2].set_title("Twin − threshold", loc="left")
+            axes[2].set_title("Variant − reference", loc="left")
+            axes[2].legend(fontsize=6)
         for ax in axes:
             ax.set_ylabel(unit)
             ax.axhline(0, color="#AEAEB2", linewidth=0.8)
         fig.suptitle(title)
         return fig
+
+
+def save_replay(frame: pd.DataFrame, path: Path):
+    """Measurement agreement is not error against an unobserved physical truth."""
+    times = pd.to_datetime(frame.timestamp, utc=True)
+    fig, axes = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+    for channel, unit, ax in zip(CHANNELS, ("°C", "%RH", "fraction"), axes, strict=True):
+        ax.scatter(times, frame[f"measured_{channel}"], s=7, color="#86868B", label="Measured")
+        ax.plot(times, frame[f"estimated_{channel}"], color="#0071E3", label="Estimated")
+        std = frame[f"std_{channel}"]
+        if std.notna().any():
+            ax.fill_between(
+                times,
+                frame[f"estimated_{channel}"] - 1.96 * std,
+                frame[f"estimated_{channel}"] + 1.96 * std,
+                color="#0071E3",
+                alpha=0.12,
+                label="±1.96 model SD (uncalibrated)",
+            )
+        if frame[f"measured_{channel}"].isna().all():
+            ax.text(
+                0.02, 0.9, "Unmeasured; model propagation only", transform=ax.transAxes, fontsize=8
+            )
+        ax.set_ylabel(f"{channel} ({unit})")
+        ax.legend(loc="upper right", fontsize=8)
+    axes[-1].set_xlabel("Original timestamps (UTC)")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+def save_resource_tradeoff(frame: pd.DataFrame, path: Path):
+    """Show all runs, including unfavorable error/traffic outcomes, without a fitted frontier."""
+    palette = ("#1D1D1F", "#8E8E93", "#0071E3", "#636366", "#AEAEB2")
+    with plt.rc_context(RESEARCH_STYLE):
+        fig, ax = plt.subplots(figsize=(8, 5), layout="constrained")
+        for i, (label, group) in enumerate(frame.groupby("controller", sort=False)):
+            ax.scatter(
+                group.local_application_bytes,
+                group.mae_temperature,
+                marker=("o", "s", "^", "D", "x")[i % 5],
+                color=palette[i % 5],
+                s=35,
+                label=label,
+                alpha=0.8,
+            )
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel("Local observation application bytes (send attempts)")
+        ax.set_ylabel("Temperature estimation MAE (degC)")
+        ax.set_title("Resource/error tradeoff: every seed and scenario")
+        ax.legend(fontsize=8)
+        fig.savefig(path, dpi=150)
+        plt.close(fig)

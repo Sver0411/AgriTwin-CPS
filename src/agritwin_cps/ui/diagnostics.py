@@ -30,7 +30,9 @@ def fallback_conditions(run: RunRecord) -> dict[str, np.ndarray]:
     guarantees its value passed finite/range validation; estimates are recorded separately.
     """
     frame, config = run.result.trajectory, run.config.controller
-    if run.controller == "threshold":
+    if all(f"control_valid_{c}" in frame for c in CHANNELS):
+        valid = frame[[f"control_valid_{c}" for c in CHANNELS]].to_numpy(dtype=bool)
+    elif run.controller == "threshold":
         valid = np.column_stack(
             [
                 (frame[f"observed_timestamp_{c}_step"] >= 0)
@@ -108,6 +110,8 @@ def evidence_timeline(run: RunRecord) -> pd.DataFrame:
             "config.actuator.failures",
         )
     missing = frame[[f"sensor_{c}" for c in CHANNELS]].isna().any(axis=1)
+    if "sampled" in frame:
+        missing &= frame.sampled
     mask_events(
         "Missing sensor samples",
         "Recorded",

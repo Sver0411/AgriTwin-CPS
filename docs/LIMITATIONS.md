@@ -1,61 +1,81 @@
-# Limitations and planned work
+# Limitations and planned work / 局限性与后续工作
 
-## Implemented and tested in simulation
+## Evidence status
 
-The three-state bounded proxy model, independent estimators, common-random-number comparisons,
-virtual sensing, local/remote links, constrained actuators and multi-seed artifact runner are
-implemented. Unit/integration tests and Streamlit AppTest exercise the documented functionality.
-Tests establish software behavior under specific conditions, not empirical model accuracy.
+The bounded plant, independent estimators, virtual sensing, actuator/local-control loop, health
+checks, EKF/replay, sampling budgets, paired runner and interface are implemented and tested.
+Tests establish numerical/software behavior under declared conditions, not field accuracy.
 
-## Not validated on public data or hardware
+The South African public dataset is used only for offline temperature measurement-consistency
+comparisons on quality-selected segments. There is **no calibrated full greenhouse model or
+closed-loop validation on public data**, nor annotated field fault-detection validation. No physical
+hardware, crop or greenhouse is connected. Synthetic truth remains distinct from measurement.
+Illustrative model, noise, trust, control and safety parameters are not agricultural recommendations.
 
-No public greenhouse dataset has been used for calibration or independent validation. No physical
-sensors, actuators, gateways, crops or greenhouse experiments have been connected. All default
-coefficients, safety bands, noise models, recovery thresholds and fault schedules are assumed.
-Synthetic `true_state` is not a hardware measurement. This release is not validated for farm use.
+## Modeling
 
-## Modeling limitations
+Direct RH dynamics omit psychrometrics, condensation and strong thermal/water coupling. The proxy
+omits crop physiology, geometry, spatial differences, water volumes, actuator mechanics, production
+or economics. Clipping bounds can conceal unphysical regimes and distort Gaussian assumptions.
+Simulation assumes perfectly known synthetic weather and applied actions. Shared plant/twin model
+families and jointly varied mismatch coefficients cover only a small structural mismatch space.
+Simple seeded noise cannot represent all seasonal, correlated or heavy-tailed sensor errors.
 
-- Direct relative-humidity dynamics omit absolute humidity, condensation and heat/moisture coupling.
-- No crop physiology, spatial heterogeneity, greenhouse geometry, water volume, actuator mechanics,
-  psychrometrics, production economics or crop yield model is included.
-- Hard clipping prevents unbounded states but can conceal unphysical regimes and distort errors.
-- The twin assumes perfect weather knowledge and noiseless applied-actuator feedback.
-- The plant and twin share the same functional family; parameter mismatch does not represent
-  all structural mismatch. Two mismatch coefficients vary jointly in the reference sweep.
-- Weather and sensor distributions are simple and independent; real errors can be correlated,
-  seasonal, heavy-tailed or state dependent. Five evaluation seeds give limited distributional evidence.
+## Trust, estimation and control
 
-## Estimation and control limitations
+Heuristic scores are not fault probabilities. Residuals confound model error, real environmental
+change and sensor malfunction. Slow drift can be assimilated before a residual threshold triggers;
+constant values can also be real or quantized measurements. Simulation diagnosis already contains
+misses and false alarms. Unit tests of designed faults are not a field sensitivity/specificity study.
 
-The observation-corrected estimator is a fixed-gain heuristic, not a Kalman filter or an optimal
-nonlinear estimator. It records observation age/missing duration but no covariance or calibrated
-uncertainty. It discounts delayed readings at the current time; historical replay is planned.
-Plausible drift and stuck-at faults cannot reliably be detected with current range checks.
-Model-only operation reaches a configured age limit and enters fallback rather than predicting
-indefinitely. Fallback itself can violate safe ranges during adverse weather. Hysteretic control
-has no crop objective, formal invariance proof, hard-state constraint optimizer or optimality claim.
-The two controllers also differ in allowed data age, so apparent benefit cannot be attributed
-solely to smoothing; an equal-age ablation is a useful next experiment.
+EKF Q/R/P are assumed, covariance is uncalibrated, and hard clipping/Jacobian kinks violate exact
+Gaussian assumptions. Health history is causal but not re-diagnosed during replay; stored weights
+remain fixed. Finite history and transport/estimator expiry discard some delayed data. Old saved
+trajectory rows remain the estimates available at that time; no retrospective smoothing claim.
 
-## Communications and reporting limitations
+Default trust-EKF degrades markedly on the public temperature segment under assumed forcing.
+This is evidence of a failure condition, not justification for silently tuning the final test.
+The fixed-gain and model-only baselines have no covariance. Model-only age limits cause fallback.
+Threshold/twin controllers differ in age policy; EKF SD limits add an explicit method difference.
+No controller has formal invariance, optimality or agricultural safety guarantees.
 
-Links model application messages only: no wireless propagation, protocol stacks, retransmission,
-clock skew, bandwidth congestion, broker availability, authentication or energy accounting.
-Remote independence is an architectural property; it cannot validate a real embedded controller.
-In-flight packets due during an outage are dropped and no historical backlog is replayed.
-Fault-period metrics use active-window time rather than tracking every delayed causal effect.
-Recovery is threshold/dwell based; overlapping fault categories complicate attribution. Means
-conditional on recovery must be read with censor counts. Settling time is not applicable to
-these diurnal experiments. There is no agricultural yield, actual water volume or energy metric.
+## Sampling and transport
 
-## Prioritized next work (planned)
+The change policy observes predicted change, not unsampled physical measurements. All-channel
+low trust may increase sampling when reliability is poor; it need not save traffic. Policies are
+heuristics, not optimized scheduling solutions. Budget exhaustion overrides interval targets.
+Local observation budgets exclude remote per-step telemetry; total bytes remain separately visible.
+Links omit radio propagation, network protocols, retransmission, congestion, clock skew and energy.
+Outage knowledge is configured in simulation. Remote independence checks architecture, not hardware.
+Transport drops cannot be undone by estimator history replay.
 
-1. Freeze this baseline, increase independent evaluation seeds, and perform equal-age and
-   model-only/observation-corrected ablations with paired reporting and explicit censor handling.
-2. Study prediction horizon versus mismatch using disjoint development/evaluation scenarios.
-3. Implement timestamp-aligned delayed-state replay and compare it with the age-discount heuristic.
-4. Select and verify a public dataset, document units/licensing, and evaluate calibration on
-   genuinely held-out records before making empirical model claims.
-5. Only after validation, consider absolute-humidity physics, parameter identification and optional
-   hardware adapters. Reinforcement learning is outside the current scope.
+## Public data and evaluation
+
+The original downloads contain duplicate timestamps, backward jumps, long gaps and questionable
+full-file calendar dates. Selections are disclosed, so inference covers the retained subset only.
+Source timezone normalization is an assumption. No automatic date repair is made. The replay uses
+constant assumed forcing/actions, even where additional source columns exist; it does not validate
+the model using mapped measured weather or fan/wet-wall physics. Humidity/moisture are unmeasured
+in the selected training/test target files, and their accuracy metrics remain null.
+
+Posterior measurement agreement includes assimilated measurements. Pre-update and masked agreement
+remain agreement against noisy measurements, not latent state truth. Repeated masking seeds on
+one greenhouse are not independent greenhouse replications. No field fault labels or real hardware
+energy/yield evidence exists. No confidence interval, significance, novelty or superiority claim.
+
+Recovery metrics are tolerance/dwell dependent, overlapping faults complicate causal attribution,
+and conditional recovery means require censor counts. Settling time is N/A for diurnal runs.
+A–H use three development seeds; H repeats C's design and adds no independent evidence. Broader
+multi-season/multi-site evaluation and independent model-family mismatch remain future research.
+
+## Prioritized next work
+
+1. Model/forcing calibration on separate calibration records; map measured weather/actions with
+   verified timestamp alignment and units, then reserve a new untouched evaluation segment.
+2. Distinguish model mismatch from sensor anomalies, study residual blind spots and recovery,
+   and validate diagnosis on independently annotated observations.
+3. Assess Q/R/health sensitivity on disjoint development scenarios and freeze before evaluation;
+   report calibration, equal-age control ablations and sampling/accuracy Pareto tradeoffs.
+4. Joint local/remote scheduling and explicit retry/clock models if that becomes the research scope.
+5. Stronger physical humidity balance and optional hardware adapters after empirical validation.
+   Reinforcement learning and large-language-model integration are outside this release.

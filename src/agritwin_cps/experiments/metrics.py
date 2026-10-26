@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from agritwin_cps.config import SimulationConfig
+from agritwin_cps.experiments.adaptive_metrics import adaptive_metrics
 from agritwin_cps.models.greenhouse import CHANNELS
 from agritwin_cps.simulation.engine import SimulationResult
 
@@ -176,4 +177,5 @@ def compute_metrics(
                 output[f"post_recovery_sync_error_{channel}"] = (
                     float(valid.mean()) if len(valid) else None
                 )
+    output.update(adaptive_metrics(result, config))
     return output, recovery

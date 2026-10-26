@@ -89,3 +89,46 @@ misleading when censoring differs, so report event tables and censor counts alon
 `schema.json` is a machine-readable map of trajectory and metric units. Empty CSV values and
 JSON null mean unmeasured/inapplicable/censored as documented above. `failure_cases.csv` records
 observed violations, censored recovery and failed commands; no crop yield metric is implemented.
+
+## 2.0 diagnosis, uncertainty and resource metrics / 新增指标
+
+All simulation additions are derived from persisted trajectories/events. Estimator/sampler/health
+code cannot consume evaluator labels. `fault_label_CHANNEL` denotes active configured injection,
+configured nonzero sensor bias, or realized random dropout at a sampled step. A configured
+window is an injection label, not proof every perturbed value is measurably wrong. The global
+noise SD has no true/false fault annotation; an explicit noise-increment window does.
+
+Diagnosis evaluates each channel's first health record per **delivered generation timestamp**,
+not every repeated cached display row. Confirmed anomalies are positive; normal/suspected/unknown
+are negative. TP/FP/FN/TN, evaluated count and standard precision `TP/(TP+FP)`, recall
+`TP/(TP+FN)`, F1 `2TP/(2TP+FP+FN)` and false-positive rate `FP/(FP+TN)` are reported. Zero
+denominator yields null. This conditional population excludes never-delivered packets: interpret
+alongside sampling/coverage and missing-data counts, not unconditional system fault recall.
+For each configured channel fault window, detection delay is first confirmed receipt time minus
+window start (seconds), using a generation timestamp inside the window. Undetected windows are
+counted censored; mean delay excludes them. Detection delayed beyond the horizon is not zero.
+
+Simulation empirical 95% coverage = mean `|estimate-truth| <= 1.96*std` over finite positive SDs;
+normalized squared error = mean `((estimate-truth)/std)^2`. These are dimensionless model
+diagnostics, not proof of nominal statistical calibration. Baselines without covariance yield null.
+`uncertainty_fallback_seconds` counts trajectory bins whose EKF SD exceeds a configured limit
+on a twin-assisted path; `control_valid_*` also includes the controller age/finite-input rule.
+
+Violation magnitude integral per state is
+`sum(max(low-x,0)+max(x-high,0))*dt/3600`: °C·h, %RH·h or fraction·h. Existing violation
+**durations** remain seconds. Maximum observation age uses recorded generation age × dt,
+including growing never-observed ages; it is not a measurement of physical clock accuracy.
+
+Sampling counts distinguish attempted samples, generated observations, valid generated packets
+(any in-range finite component), valid delivery **steps**, and actual per-link message deliveries.
+For each link: sent = received + lost + pending-at-horizon. Bytes = 34 × send attempts. Total
+bytes = local + remote. Mean sample interval = mean step difference of actual samples × dt;
+with fewer than two samples it is null. See ADAPTIVE_SAMPLING.md for scope/serialization rules.
+
+Offline replay uses separate metric names. `measurement_agreement_*` compares current posterior
+with the original measured current row; `preupdate_agreement_*` compares the prior before the
+current received batch; `heldout_agreement_*` selects artificially masked current components whose
+original values exist. The same MAE/RMSE/bias equations apply in native channel units. Valid
+counts refer to eligible finite pairs; unmeasured channels stay null with count zero. These are
+**measurement agreement**, not simulated-truth or latent-physical-state errors. Delay can already
+make all current rows unobserved at decision time, even without artificial masking.

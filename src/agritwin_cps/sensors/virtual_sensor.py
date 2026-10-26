@@ -24,7 +24,7 @@ class VirtualSensor:
         values = np.array(plant_state, copy=True, dtype=float)
         values += np.array(self.config.noise_std) * standard_noise + np.array(self.config.bias)
         values[np.asarray(uniform_dropout) < self.config.dropout_probability] = np.nan
-        values = FaultInjector(self.config.faults, dt_seconds).apply(values, step)
+        values = FaultInjector(self.config.faults, dt_seconds).apply(values, step, standard_noise)
         # Random dropout also takes precedence over all injected numeric faults.
         values[np.asarray(uniform_dropout) < self.config.dropout_probability] = np.nan
         return Observation(step, tuple(values))

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from agritwin_cps.config import SimulationConfig
+from agritwin_cps.config import SimulationConfig, fault_window_notices
 from agritwin_cps.experiments.scenarios import EXPERIMENTS, scenarios
 from agritwin_cps.simulation.runner import run_experiment, write_run
 
@@ -102,3 +102,31 @@ def test_provenance_does_not_require_git(monkeypatch):
     monkeypatch.setattr(subprocess, "run", unavailable)
     metadata = environment_metadata()
     assert metadata["git_commit"] is None and metadata["source_sha256"]
+
+
+def test_window_notices_cover_inactive_partial_and_exact_horizon_windows(tmp_path):
+    cfg = SimulationConfig(
+        steps=24,
+        sensor={
+            "faults": [
+                {"channel": "temperature", "kind": "missing", "start_step": 24, "end_step": 36},
+                {"channel": "humidity", "kind": "bias", "start_step": 4, "end_step": 24},
+            ]
+        },
+        communication={
+            "local": {"outages": [{"start_step": 8, "end_step": 32}]},
+            "remote": {"outages": [{"start_step": 2, "end_step": 4}]},
+        },
+        actuator={"failures": [{"start_step": 25, "end_step": 30}]},
+    )
+    notices = fault_window_notices(cfg)
+    assert len(notices) == 3
+    assert sum("will not trigger" in notice for notice in notices) == 2
+    assert any(
+        "Local communication outage" in notice and "only part" in notice for notice in notices
+    )
+    assert not any("humidity" in notice or "Remote" in notice for notice in notices)
+    with pytest.warns(UserWarning):
+        write_run(cfg, 7, "threshold", tmp_path / "partial", plots=False)
+    saved = yaml.safe_load((tmp_path / "partial" / "config.yaml").read_text())
+    assert saved["sensor"]["faults"][0]["start_step"] == 24  # No automatic rescheduling.

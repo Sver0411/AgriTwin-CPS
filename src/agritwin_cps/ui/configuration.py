@@ -8,7 +8,12 @@ import streamlit as st
 import yaml
 from pydantic import ValidationError
 
-from agritwin_cps.config import CommunicationConfig, SimulationConfig, load_config
+from agritwin_cps.config import (
+    CommunicationConfig,
+    SimulationConfig,
+    fault_window_notices,
+    load_config,
+)
 from agritwin_cps.ui.workspace import CONTROLLERS, ESTIMATORS, PRESETS, request_signature
 
 
@@ -39,6 +44,16 @@ def preset_widget_values(draft: dict) -> dict:
         "input_seeds": draft["seeds_text"],
         "input_controllers": draft["controllers"],
         "input_estimator": data["estimator"]["method"],
+        "input_sampling": data["sampling"]["strategy"],
+        "input_health": data["health"]["method"],
+        "input_sampling_fixed": data["sampling"]["fixed_interval_steps"],
+        "input_sampling_min": data["sampling"]["min_interval_steps"],
+        "input_sampling_max": data["sampling"]["max_interval_steps"],
+        "input_sampling_samples": data["sampling"]["sample_budget"] or 0,
+        "input_sample_budget_enabled": data["sampling"]["sample_budget"] is not None,
+        "input_byte_budget_enabled": data["sampling"]["local_byte_budget"] is not None,
+        "input_byte_budget": data["sampling"]["local_byte_budget"] or 0,
+        "input_history": data["estimator"]["replay_history_steps"],
         "input_sensor_fault": draft["sensor_choice"],
         **{f"input_noise_{i}": float(value) for i, value in enumerate(data["sensor"]["noise_std"])},
         "input_dropout": float(data["sensor"]["dropout_probability"]),
@@ -64,7 +79,7 @@ def configuration(project_root: Path):
         st.session_state.update(preset_widget_values(updated))
 
     st.selectbox(
-        "Scenario preset",
+        "Base preset",
         list(PRESETS),
         index=list(PRESETS).index(draft["preset"]),
         key="input_preset",
@@ -91,7 +106,7 @@ def configuration(project_root: Path):
         step=1,
         key="input_dt",
         disabled=yaml_mode,
-        help="Integration interval. Model coefficients use hours internally.",
+        help="Integration interval. Preset/YAML fault windows keep step indices when this changes.",
     )
     seeds_text = st.text_input(
         "Random seeds",
@@ -115,8 +130,85 @@ def configuration(project_root: Path):
         index=list(ESTIMATORS).index(data["estimator"]["method"]),
         key="input_estimator",
         disabled=yaml_mode,
-        help="Fixed-gain correction or model-only propagation. Neither is a Kalman filter.",
+        help="原有基线、EKF 或可信度加权 EKF；历史回放是 EKF 的独立设置。",
     )
+    sampling_method = st.selectbox(
+        "采样策略 / Sampling",
+        ["fixed", "change", "uncertainty", "trust_change", "event"],
+        index=["fixed", "change", "uncertainty", "trust_change", "event"].index(
+            data["sampling"]["strategy"]
+        ),
+        key="input_sampling",
+        disabled=yaml_mode,
+    )
+    with st.expander("可信度、采样与历史回放"):
+        health_method = st.selectbox(
+            "诊断方法",
+            ["basic", "residual", "persistent"],
+            index=["basic", "residual", "persistent"].index(data["health"]["method"]),
+            key="input_health",
+            disabled=yaml_mode,
+        )
+        fixed_interval = st.number_input(
+            "固定周期（步）",
+            min_value=1,
+            value=data["sampling"]["fixed_interval_steps"],
+            key="input_sampling_fixed",
+            disabled=yaml_mode,
+        )
+        min_interval = st.number_input(
+            "最小采样间隔（步）",
+            min_value=1,
+            value=data["sampling"]["min_interval_steps"],
+            key="input_sampling_min",
+            disabled=yaml_mode,
+        )
+        max_interval = st.number_input(
+            "最大采样间隔（步）",
+            min_value=1,
+            value=data["sampling"]["max_interval_steps"],
+            key="input_sampling_max",
+            disabled=yaml_mode,
+        )
+        sample_limited = st.checkbox(
+            "启用采样次数预算",
+            value=data["sampling"]["sample_budget"] is not None,
+            key="input_sample_budget_enabled",
+            disabled=yaml_mode,
+        )
+        sample_budget = st.number_input(
+            "采样次数上限",
+            min_value=0,
+            value=data["sampling"]["sample_budget"] or 0,
+            key="input_sampling_samples",
+            disabled=yaml_mode or not sample_limited,
+        )
+        byte_limited = st.checkbox(
+            "启用本地发送字节预算",
+            value=data["sampling"]["local_byte_budget"] is not None,
+            key="input_byte_budget_enabled",
+            disabled=yaml_mode,
+        )
+        byte_budget = st.number_input(
+            "本地应用层字节上限",
+            min_value=0,
+            value=data["sampling"]["local_byte_budget"] or 0,
+            key="input_byte_budget",
+            disabled=yaml_mode or not byte_limited,
+        )
+        history = st.number_input(
+            "EKF 历史窗口（步；0 关闭回放）",
+            min_value=0,
+            max_value=10000,
+            value=data["estimator"]["replay_history_steps"],
+            key="input_history",
+            disabled=yaml_mode or method not in ("ekf", "trust_ekf"),
+        )
+        st.caption(
+            "最大间隔在预算可用时适用。预算只约束本地观测发送，远程监控独立计数。"
+            "可信度为启发式分数；只有 trust_ekf 使用它调整观测权重。"
+            "链路和估计器的最大观测年龄仍可先于历史缓存拒绝数据。"
+        )
     with st.expander("Sensing & fault scenarios"):
         sensor_options = [
             "Preset faults",
@@ -191,9 +283,7 @@ def configuration(project_root: Path):
             key="input_fault_duration",
             disabled=yaml_mode,
         )
-        st.caption(
-            "Custom windows apply to custom sensor/link faults. Preset windows stay unchanged."
-        )
+        st.caption("Custom sensor/link windows keep their hours, rounded up to the step grid.")
     with st.expander("Advanced Settings"):
         plant_solar = st.number_input(
             "Plant solar heating (°C/h)",
@@ -244,7 +334,18 @@ def configuration(project_root: Path):
         else:
             yaml_text = draft["yaml"]
     data.update(steps=math.ceil(hours * 3600 / dt), dt_seconds=dt)
-    data["estimator"]["method"] = method
+    data["estimator"].update(
+        method=method, replay_history_steps=history if method in ("ekf", "trust_ekf") else 0
+    )
+    data["health"]["method"] = health_method
+    data["sampling"].update(
+        strategy=sampling_method,
+        fixed_interval_steps=fixed_interval,
+        min_interval_steps=min_interval,
+        max_interval_steps=max_interval,
+        sample_budget=sample_budget if sample_limited else None,
+        local_byte_budget=byte_budget if byte_limited else None,
+    )
     data["sensor"].update(noise_std=noise, dropout_probability=dropout, delay_steps=sensor_delay)
     data["actuator"]["delay_steps"] = actuator_delay
     data["plant"]["solar_heat_c_per_h"] = plant_solar
@@ -305,11 +406,27 @@ def configuration(project_root: Path):
         st.session_state.lab_draft_signature = None
         return None, controllers
     st.session_state.lab_draft_invalid = False
+    base = draft["preset_data"]
+    customized = config.model_dump(mode="json") != base
+    if customized and config.name == base["name"]:
+        config.name = f"{base['name']}_custom"
     st.session_state.lab_draft_signature = request_signature(config, controllers)
+    st.session_state.lab_current_config = config
+    st.caption(
+        f"Base preset: {draft['preset']} · Actual configuration: {config.name}"
+        + (" (customized)" if customized else " (unchanged)")
+    )
     st.caption(
         f"{config.steps:,} steps · {config.steps * config.dt_seconds / 3600:g} h · "
         f"{len(config.seeds) * len(controllers)} simulation run(s)"
     )
+    st.caption(
+        "Preset/YAML fault windows keep step indices: changing the time step changes their hours. "
+        "Custom GUI windows keep hours and are rounded up to steps."
+    )
+    notices = fault_window_notices(config)
+    if notices:
+        st.warning("\n".join(f"- {notice}" for notice in notices))
     with st.expander("Resolved run configuration"):
         st.code(yaml.safe_dump(config.model_dump(mode="json"), sort_keys=False), language="yaml")
     return config, controllers

@@ -1,0 +1,15 @@
+# Handwritten format fixture only; not greenhouse measurements or research evidence.
+import:
+  dataset_id: synthetic-format-fixture-v1
+  origin: synthetic_fixture
+  timestamp_column: timestamp
+  columns: {temperature: air_F, humidity: rh_fraction, moisture: water_percent}
+  temperature_unit: F
+  humidity_unit: fraction
+  moisture_unit: percent
+  missing_policy: preserve
+  expected_interval_seconds: 300
+replay:
+  partition: development
+  dropout_probability: 0.25
+  delay_rows: 2

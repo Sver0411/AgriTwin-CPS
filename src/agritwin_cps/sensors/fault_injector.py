@@ -11,13 +11,17 @@ class FaultInjector:
         self.faults = faults
         self.dt_seconds = dt_seconds
 
-    def apply(self, readings, step: int) -> np.ndarray:
+    def apply(self, readings, step: int, standard_noise=None) -> np.ndarray:
         result = np.array(readings, dtype=float, copy=True)
         for fault in self.faults:
             if not fault.active(step):
                 continue
             index = CHANNELS.index(fault.channel)
-            if fault.kind == "missing":
+            if fault.kind == "noise":
+                if standard_noise is None:
+                    raise ValueError("noise injection requires a seeded standard-noise draw")
+                result[index] += fault.magnitude * standard_noise[index]
+            elif fault.kind == "missing":
                 result[index] = np.nan
             elif fault.kind == "bias":
                 result[index] += fault.magnitude

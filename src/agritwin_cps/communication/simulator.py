@@ -1,7 +1,12 @@
 """Application-layer message transport. This is not a radio/network performance model."""
 
+import struct
+
 from agritwin_cps.config import LinkConfig
 from agritwin_cps.sensors.virtual_sensor import Observation
+
+# Version uint8 + timestamp uint64 + three float64 + validity mask uint8; little-endian.
+MESSAGE_BYTES = struct.calcsize("<BQ3dB")
 
 
 class CommunicationLink:
@@ -33,6 +38,7 @@ class CommunicationLink:
             "received_step": None,
             "resolved_step": None,
             "status": "queued",
+            "application_bytes": MESSAGE_BYTES,
         }
         if self.disconnected(step):
             event.update(status="disconnected_at_send", resolved_step=step)

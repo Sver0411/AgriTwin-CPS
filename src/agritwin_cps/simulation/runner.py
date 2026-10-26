@@ -5,13 +5,14 @@ import importlib.metadata
 import json
 import platform
 import subprocess
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 import yaml
 
-from agritwin_cps.config import SimulationConfig
+from agritwin_cps.config import SimulationConfig, fault_window_notices
 from agritwin_cps.experiments.comparison import paired_differences, summarize
 from agritwin_cps.experiments.metrics import compute_metrics
 from agritwin_cps.experiments.scenarios import scenarios
@@ -19,7 +20,7 @@ from agritwin_cps.simulation.engine import Strategy, simulate
 from agritwin_cps.simulation.schema import artifact_schema
 from agritwin_cps.visualization.plots import save_comparison, save_trajectory
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 
 
 def write_json(path: Path, value) -> None:
@@ -64,6 +65,8 @@ def reserve_output(path: Path) -> None:
 def write_run(
     config: SimulationConfig, seed: int, controller: Strategy, output: Path, plots: bool = True
 ) -> dict:
+    for notice in fault_window_notices(config):
+        warnings.warn(notice, UserWarning, stacklevel=2)
     reserve_output(output)
     resolved = config.model_dump(mode="json")
     resolved["seeds"] = [seed]
@@ -75,6 +78,9 @@ def write_run(
     result.observation_events.to_csv(output / "observation_events.csv", index=False)
     result.communication_events.to_csv(output / "communication_events.csv", index=False)
     recovery.to_csv(output / "recovery_events.csv", index=False)
+    result.health_events.to_csv(output / "health_events.csv", index=False)
+    result.estimator_events.to_csv(output / "estimator_events.csv", index=False)
+    result.sampling_events.to_csv(output / "sampling_events.csv", index=False)
     write_json(output / "metrics.json", metrics)
     write_json(output / "schema.json", artifact_schema(result.trajectory.columns, metrics))
     write_json(
@@ -91,6 +97,8 @@ def write_run(
         output / "metadata.json",
         {
             **environment_metadata(),
+            "estimator": config.estimator.method,
+            "sampling": config.sampling.strategy,
             "controller": controller,
             "seed": seed,
             "config_sha256": hashlib.sha256((output / "config.yaml").read_bytes()).hexdigest(),
@@ -98,6 +106,7 @@ def write_run(
     )
     if plots:
         save_trajectory(result.trajectory, output / "trajectory.png")
+    write_json(output / "run.json", {"status": "complete", "seed": seed, "controller": controller})
     return metrics
 
 

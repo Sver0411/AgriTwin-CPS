@@ -52,6 +52,14 @@ is after correction at this step. `remote_*` is the last accepted remote telemet
 be stale; `sync_error_*` compares it with the current local estimate. Values and ages must be read
 together. `local_control_executed` means a decision was scheduled, not that an action succeeded.
 
+Observation validation follows the active input path: threshold runs use
+`controller.max_sensor_age_steps`, while twin-assisted runs use
+`estimator.max_observation_age_steps`. The estimator always validates its own observations
+independently, including when running for evaluation beside the threshold controller.
+`observation_events.csv` and accepted-observation coverage describe the active path, not the
+shadow estimator's acceptance. The local transport's `max_age_steps` is an additional delivery
+limit: messages dropped by transport cannot be recovered by either consumer.
+
 Each trajectory row uses channel units specified in schema.json: temperature °C, humidity %RH,
 moisture fraction; actions in `[0,1]`, solar/evapotranspiration dimensionless proxies.
 CSV NaN is an empty cell; JSON missing metrics are null. They must never be converted into a
@@ -75,6 +83,52 @@ results. CSV/JSON and a prepared ZIP export these artifacts. Existing CLI groups
 in the comparison workspace. Set `AGRITWIN_RESULTS_DIR` to use an alternate local results root.
 The interface adds no new statistical definitions or dependencies.
 
+Preset and YAML fault windows are half-open **step-index** intervals. Changing `dt_seconds`
+keeps their indices and therefore changes their physical timing. Custom sensor/link windows
+entered in GUI hours instead retain their requested hours, rounded up to the simulation grid.
+UI preflight and the shared run writer warn about windows entirely beyond the horizon or
+extending past it. These are notices, not rejection or automatic rescheduling; partial runs can
+still be useful for censored-recovery studies. The low-level `simulate()` function stays silent.
+
+The UI labels the selected base preset separately from the resolved configuration. Modified
+settings that retain the base name receive a `_custom` suffix in saved configurations and
+comparison tables; explicit YAML names distinct from the base name are preserved. This changes no
+layout. UI experiments appear in comparison discovery only with `experiment.json`, in addition
+to their aggregate CSVs. CLI discovery continues to use `per_seed.csv` plus `summary.csv`.
+
 Generated results, virtual environments, caches and build artifacts are ignored by Git.
 Only `results/.gitkeep` is versioned there. The MIT license covers this project's source; installed
 dependencies retain their own licenses. No credentials are required or embedded.
+
+## Version 2 artifacts and workflows
+
+No new runtime dependency is required. Version 2.0.0 uses the updated uv lock; the regular-wheel
+installation and reinstall procedure above still applies. `configs/adaptive.yaml` is explicitly a
+development configuration (11/22/33). Default legacy configuration still selects fixed-gain and
+fixed every-step sampling. Histories are bounded; result/event tables intentionally retain the run.
+
+New per-run artifacts: `health_events.csv`, `sampling_events.csv`, `estimator_events.csv`, and
+`run.json` written only after successful simulation/artifact/plot completion. Trajectories add
+trust, SD, sample flags, per-channel control validity and evaluator-only fault labels. Schema 2.0
+records units. Existing single-run and aggregate CSV locations remain unchanged.
+
+A–H use `agritwin adaptive --name GROUP --config configs/adaptive.yaml --output NEW_DIR`.
+Aggregate identifiers preserve the original `controller` column for **variant labels**; actual
+controller/estimator/sampling choices appear in each saved config/metadata. Paired deltas are each
+variant minus the first declared variant per scenario. New UI adaptive directories require
+`adaptive_experiment.json` for discovery; ordinary legacy CLI detection remains unchanged.
+
+Generic `agritwin replay` and `replay-experiment` use `--csv` and `--data-config`. Per-run replay
+metadata keeps package source hashes under `source_sha256` and dataset bytes under `dataset_sha256`,
+plus config hashes, seed, partition, assumed inputs and source identity. It saves original normalized
+measurements, timestamped trajectories, health/filter events, schema, metrics and `replay.json`
+only after completion. Measurement comparisons intentionally use `measurement_per_seed.csv`,
+`measurement_summary.csv`, paired tables and `replay_comparison.json`; they do not enter the
+simulation-truth comparison selector or borrow its metric semantics.
+
+Streamlit adds native estimator/health/sampling/history/budget controls. Its three new workspaces
+read these artifacts. Replay and adaptive failures preserve previous completed results and save
+local diagnostics under `results/failures/`. Historical successful results can be restored from
+completion manifests. Config drafts and output directories stay distinct. See DATA_REPLAY.md for
+public-source preparation and the handwritten format fixture disclaimer. Do not commit raw local
+user data, generated results or caches.

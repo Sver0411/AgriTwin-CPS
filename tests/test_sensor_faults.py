@@ -33,3 +33,19 @@ def test_missing_and_random_dropout_precede_stuck():
         300,
     )
     assert np.isnan(injector.apply([24, 60, 0.4], 2)[1])
+
+
+def test_noise_fault_is_a_seeded_sd_increment_with_window():
+    cfg = SensorConfig(
+        noise_std=(0.3, 0, 0),
+        faults=[
+            SensorFault(channel="temperature", kind="noise", magnitude=2, start_step=1, end_step=3)
+        ],
+    )
+    sensor = VirtualSensor(cfg)
+    assert sensor.sample([24, 60, 0.4], 1, np.array([2, 0, 0]), np.ones(3), 300).values[
+        0
+    ] == pytest.approx(28.6)
+    assert sensor.sample([24, 60, 0.4], 3, np.array([2, 0, 0]), np.ones(3), 300).values[
+        0
+    ] == pytest.approx(24.6)

@@ -121,3 +121,35 @@ def test_preset_reset_and_cli_comparison(app_workspace):
     assert not app.exception
     assert any("N/A" in message.value for message in app.info)
     assert len(pd.read_csv(app_workspace / "cli_comparison" / "per_seed.csv")) == 4
+
+
+def test_window_guidance_and_actual_configuration_names(app_workspace):
+    app = open_lab(open_app())
+    assert any("Actual configuration: nominal (unchanged)" in c.value for c in app.caption)
+    app.selectbox(key="input_preset").select("Missing Observations").run()
+    app.number_input(key="input_duration").set_value(4.0).run()
+    assert any("will not trigger" in w.value for w in app.warning)
+    with pytest.warns(UserWarning, match="will not trigger"):
+        app.button(key="run_simulation").click().run()
+    assert not app.exception
+    assert app.session_state["lab_experiment"].config.name == "sensor_dropout_custom"
+
+    app.number_input(key="input_duration").set_value(11.0).run()
+    assert any("only part of the window" in w.value for w in app.warning)
+    app.number_input(key="input_dt").set_value(60).run()
+    assert app.session_state["lab_draft"]["data"]["sensor"]["faults"][0]["start_step"] == 120
+    assert any("Preset/YAML fault windows keep step indices" in c.value for c in app.caption)
+    app.selectbox(key="input_sensor_fault").select("Missing observations").run()
+    app.number_input(key="input_fault_start").set_value(1.0)
+    app.number_input(key="input_fault_duration").set_value(1.0).run()
+    assert app.session_state["lab_draft"]["data"]["sensor"]["faults"][0]["start_step"] == 60
+    app.number_input(key="input_dt").set_value(120).run()
+    fault = app.session_state["lab_draft"]["data"]["sensor"]["faults"][0]
+    assert (fault["start_step"], fault["end_step"]) == (30, 60)
+
+    # Explicit user names are preserved, including when YAML replaces the base preset.
+    app.checkbox(key="input_yaml_mode").check().run()
+    app.text_area(key="input_yaml").set_value("name: trial_A\nsteps: 8\nseeds: [7]").run()
+    app.button(key="run_simulation").click().run()
+    assert not app.exception
+    assert app.session_state["lab_experiment"].config.name == "trial_A"

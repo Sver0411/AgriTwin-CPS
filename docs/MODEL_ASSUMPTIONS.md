@@ -96,10 +96,10 @@ xhat_i <- clip(xhat_i + alpha_i*(measurement_i - xhat_i), hard_bounds_i)
 
 Default gains `[0.35,0.3,0.4]` are transparent demonstration constants, not optimized gains.
 The maximum acceptable observation age is 5 steps. A batch uses the newest accepted value of each
-component. A delayed reading corrects the current state approximately; no history replay or
-out-of-sequence Bayesian update is implemented. Stuck values within bounds and plausible drift
-are not detected automatically. After observations return, ordinary correction resumes.
-There is no covariance/optimality claim. Per-channel observation age and consecutive unused-step
+component. For these two baselines, delayed readings correct the current state approximately,
+without covariance or historical replay. After observations return, ordinary correction resumes.
+Version 2 adds separate health checks, EKF and bounded replay; see SENSOR_TRUST_ESTIMATION.md.
+The fixed-gain baseline makes no covariance/optimality claim. Per-channel observation age and consecutive unused-step
 count document uncertainty growth qualitatively, including model-only runs.
 
 ## Control and actuators
@@ -118,3 +118,12 @@ and within `[0,1]`. Optional failure windows freeze the previous action.
 Safety intervals `[16,32]` °C, `[35,90]` %RH and `[0.25,0.75]` soil-water fraction are configurable
 simulation assumptions only. Recovery tolerances `[1,5,0.03]` in state units and a 3-step dwell are
 also scenario assumptions, not validated sensor accuracy or agricultural limits.
+
+## Version 2 noise-increment windows
+
+The isolated injector also supports `kind: noise`. Its magnitude is an **increment in channel
+standard deviation** during the window: the base noise and increment use the same precomputed
+standard-normal draw, giving `(base_SD + increment)*Z`. It is not the sum of two independent
+Gaussian disturbances. This preserves time-indexed common random numbers across schedules.
+Out-of-range faults can be configured using bias or stuck-at magnitudes; missing still takes
+precedence. Health/estimation policies are separate from the plant model.

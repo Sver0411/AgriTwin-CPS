@@ -53,8 +53,14 @@ class WeatherConfig(Settings):
 
 class SensorFault(Window):
     channel: Channel
-    kind: Literal["missing", "bias", "drift", "stuck"]
-    magnitude: float = 0.0  # Drift: channel units/hour; bias/stuck: channel units.
+    kind: Literal["missing", "bias", "drift", "stuck", "noise"]
+    magnitude: float = 0.0  # Drift: units/hour; noise: extra SD; bias/stuck: channel units.
+
+    @model_validator(mode="after")
+    def noise_scale(self):
+        if self.kind == "noise" and self.magnitude < 0:
+            raise ValueError("noise fault magnitude must be nonnegative")
+        return self
 
 
 class SensorConfig(Settings):
@@ -122,17 +128,76 @@ class ControllerConfig(Settings):
         return self
 
 
+class HealthConfig(Settings):
+    method: Literal["basic", "residual", "persistent"] = "persistent"
+    residual_scale: Triple = (1.0, 5.0, 0.03)
+    residual_threshold: float = Field(default=3.0, gt=0)
+    persistence_steps: int = Field(default=3, ge=2)
+    ewma_alpha: float = Field(default=0.2, gt=0, le=1)
+    max_rate_per_h: Triple = (30.0, 100.0, 0.5)
+    stuck_tolerance: Triple = (0.001, 0.005, 0.00001)
+    stuck_steps: int = Field(default=8, ge=2)
+    missing_age_steps: int = Field(default=6, ge=1)
+    delay_warning_steps: int = Field(default=2, ge=0)
+
+    @model_validator(mode="after")
+    def positive_scales(self):
+        if min(self.residual_scale + self.max_rate_per_h + self.stuck_tolerance) <= 0:
+            raise ValueError("health scales, rates and tolerances must be positive")
+        return self
+
+
+class SamplingConfig(Settings):
+    strategy: Literal["fixed", "change", "uncertainty", "trust_change", "event"] = "fixed"
+    fixed_interval_steps: int = Field(default=1, ge=1)
+    min_interval_steps: int = Field(default=1, ge=1)
+    max_interval_steps: int = Field(default=12, ge=1)
+    change_scale: Triple = (1.0, 5.0, 0.03)
+    change_threshold: float = Field(default=1.0, gt=0)
+    uncertainty_scale: Triple = (1.0, 5.0, 0.03)
+    uncertainty_threshold: float = Field(default=1.0, gt=0)
+    trust_threshold: float = Field(default=0.5, gt=0, le=1)
+    max_valid_age_steps: int = Field(default=12, ge=1)
+    sample_budget: int | None = Field(default=None, ge=0)
+    local_byte_budget: int | None = Field(default=None, ge=0)
+    suppress_send_during_outage: bool = False
+
+    @model_validator(mode="after")
+    def intervals(self):
+        if not self.min_interval_steps <= self.fixed_interval_steps <= self.max_interval_steps:
+            raise ValueError("sampling requires min_interval <= fixed_interval <= max_interval")
+        if min(self.change_scale + self.uncertainty_scale) <= 0:
+            raise ValueError("sampling normalization scales must be positive")
+        return self
+
+
 class EstimatorConfig(Settings):
-    method: Literal["model_only", "observation_corrected"] = "observation_corrected"
+    method: Literal["model_only", "observation_corrected", "ekf", "trust_ekf"] = (
+        "observation_corrected"
+    )
     initial_state: Triple = (23.0, 62.0, 0.43)  # Independent prior, never read from the plant.
     gain: Triple = (0.35, 0.3, 0.4)
     max_observation_age_steps: int = Field(default=5, ge=0)
+
+    initial_std: Triple = (2.0, 8.0, 0.08)
+    process_std_per_sqrt_h: Triple = (0.12, 0.4, 0.001)
+    measurement_std: Triple = (0.3, 1.5, 0.01)
+    max_std: Triple = (5.0, 20.0, 0.2)
+    replay_history_steps: int = Field(default=0, ge=0, le=10000)
+    too_old_policy: Literal["ignore", "current"] = "ignore"
+    min_update_trust: float = Field(default=0.1, gt=0, le=1)
 
     @model_validator(mode="after")
     def valid_gain(self):
         if min(self.gain) < 0 or max(self.gain) > 1:
             raise ValueError("gain must lie in [0, 1]")
         validate_state(self.initial_state)
+        if min(self.initial_std + self.measurement_std + self.max_std) <= 0:
+            raise ValueError("EKF standard deviations must be positive")
+        if min(self.process_std_per_sqrt_h) < 0:
+            raise ValueError("EKF process standard deviations must be nonnegative")
+        if self.replay_history_steps and self.method not in ("ekf", "trust_ekf"):
+            raise ValueError("historical replay requires an EKF method")
         return self
 
 
@@ -157,6 +222,8 @@ class SimulationConfig(Settings):
     actuator: ActuatorConfig = Field(default_factory=ActuatorConfig)
     controller: ControllerConfig = Field(default_factory=ControllerConfig)
     estimator: EstimatorConfig = Field(default_factory=EstimatorConfig)
+    health: HealthConfig = Field(default_factory=HealthConfig)
+    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
 
     @model_validator(mode="after")
     def stable(self):
@@ -179,3 +246,31 @@ class SimulationConfig(Settings):
 def load_config(path: str | Path) -> SimulationConfig:
     with Path(path).open(encoding="utf-8") as handle:
         return SimulationConfig.model_validate(yaml.safe_load(handle) or {})
+
+
+def fault_window_notices(config: SimulationConfig) -> list[str]:
+    """Describe unobserved/truncated windows without moving or rejecting research scenarios."""
+    windows = [(f"Sensor {fault.kind} ({fault.channel})", fault) for fault in config.sensor.faults]
+    windows += [
+        (f"{link.title()} communication outage", window)
+        for link in ("local", "remote")
+        for window in getattr(config.communication, link).outages
+    ]
+    windows += [("Actuator failure", window) for window in config.actuator.failures]
+    notices = []
+    hours_per_step = config.dt_seconds / 3600
+    for label, window in windows:
+        interval = (
+            f"{label}: [{window.start_step}, {window.end_step}) steps "
+            f"({window.start_step * hours_per_step:g}–{window.end_step * hours_per_step:g} h)"
+        )
+        if window.start_step >= config.steps:
+            notices.append(
+                f"{interval} starts at/after the simulation horizon; it will not trigger."
+            )
+        elif window.end_step > config.steps:
+            notices.append(
+                f"{interval} extends beyond the simulation horizon; only part of the window "
+                "will run and recovery cannot be observed within this run."
+            )
+    return notices

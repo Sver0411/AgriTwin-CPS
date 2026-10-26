@@ -1,0 +1,21 @@
+# Uncalibrated development configuration, not a tuned final evaluation benchmark.
+name: trust_adaptive_development
+steps: 288
+dt_seconds: 300
+seeds: [11, 22, 33]
+estimator:
+  method: trust_ekf
+  replay_history_steps: 24
+  max_observation_age_steps: 24
+sensor:
+  faults:
+    - {channel: temperature, kind: drift, magnitude: 0.6, start_step: 72, end_step: 144}
+    - {channel: humidity, kind: stuck, magnitude: 65, start_step: 144, end_step: 192}
+    - {channel: moisture, kind: missing, start_step: 192, end_step: 216}
+communication:
+  local: {max_age_steps: 24}
+sampling:
+  strategy: trust_change
+  fixed_interval_steps: 4
+  min_interval_steps: 1
+  max_interval_steps: 12

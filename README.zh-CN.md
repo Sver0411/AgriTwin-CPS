@@ -1,4 +1,4 @@
-# AgriTwin-CPS
+# AgriTwin-CPS 2.0
 
 **基于仿真的温室数字孪生与信息物理系统研究平台**
 
@@ -6,9 +6,9 @@
 虚拟传感器、独立状态估计器、通风/灌溉控制、执行器约束和可复现的故障实验。
 核心实验全部支持命令行，不依赖界面、温室设备、外部数据 API 或强化学习。
 
-所有环境数据来自明确说明的简化数学模型。参数是未校准的演示假设，不能把模拟结果
+核心仿真环境数据来自明确说明的简化数学模型；外部数据回放独立标记真实测量来源。参数是未校准的演示假设，不能把模拟结果
 描述为真实温室实验，也不能直接用作农业操作建议。孪生方法可以更好、相当或更差。
-目前没有公开数据验证或物理硬件验证，也没有最优性或创新性结论。
+已执行公开温度数据的离线测量一致性对照；没有完整物理模型、闭环系统或硬件验证，也没有最优性或创新性结论。
 
 ## 安装与运行
 
@@ -35,7 +35,7 @@ ruff format --check .
 默认步长 300 秒，576 步共 48 小时。五个评估种子是 101、202、303、404、505。
 完整实验包括 7 组、26 个场景、两种控制器，共 260 次运行。
 `--estimator model_only` 可运行纯模型预测；默认是观测校正法。
-两种方法都不是 Kalman 滤波，也没有输出未经计算的置信区间。
+这两个原有基线不是 Kalman 滤波；2.0 新增 EKF 和可信度加权 EKF。协方差未经真实数据校准。
 
 ## 已实现与验证边界
 
@@ -44,13 +44,47 @@ ruff format --check .
 - 噪声、随机/连续缺测、偏移、漂移、卡死、延迟及执行器失效：已实现。
 - 本地和远程链路的延迟、丢包、断网、过期丢弃与恢复：已实现。
 - 多种子配对比较、均值/样本标准差、失败记录、指标和图表：已实现。
-- Streamlit 实验界面：已实现四个科研工作区、原生参数控件、多种子对比、持久化恢复、CSV/JSON/ZIP 导出和应用测试。
-- 真实设备、公开数据、作物产量、实际用水/能耗、无线电性能：未验证或未建模。
+- Streamlit 实验界面：已实现七个科研工作区、原生参数控件、多种子对比、持久化恢复、CSV/JSON/ZIP 导出和应用测试。
+- 传感器启发式健康评估、EKF、有限历史回放：已实现并测试，诊断可能漏报或误报。
+- 五种采样策略、采样/本地发送预算、应用层字节统计、A–H 配对实验：已实现并执行。
+- CSV 导入、离线回放、真实公开数据的温度测量一致性对照：已实现并执行，范围和质量审计见文档。
+- 真实设备、作物产量、实际用水/能耗、无线电性能：未验证或未建模。
 
 `true_state` 只表示模拟器内部状态；`observed_state` 是经验证的有效观测；
 `estimated_state` 是独立孪生估计。估计器和控制器不能访问模拟器真值。
 远程监控断网不影响本地闭环，本地传感器链路失效则会触发年龄限制与安全回退。
 安全回退规则自身也只是场景假设，并不保证所有天气下的安全。
+
+## 2.0：可信度、自适应采样与数据回放
+
+```bash
+agritwin simulate --config configs/adaptive.yaml --output results/trust_run
+agritwin adaptive --name estimators --config configs/adaptive.yaml --output results/estimator_study
+agritwin adaptive --name sampling --config configs/adaptive.yaml --output results/sampling_study
+agritwin adaptive --name delay_loss --config configs/adaptive.yaml --output results/delay_study
+agritwin replay --csv examples/format_fixture.csv --data-config configs/replay_example.yaml \
+  --config configs/adaptive.yaml --output results/format_replay
+```
+
+估计器为 `model_only`、`observation_corrected`、`ekf` 或 `trust_ekf`。
+EKF 的 `replay_history_steps` 为独立历史回放开关，0 表示关闭；链路和估计器的最大数据年龄仍生效。
+`health.method` 支持 basic/residual/persistent，可信度只是启发式分数。
+采样策略为 fixed/change/uncertainty/trust_change/event，预算分别约束采样次数与本地观测发送字节。
+默认逐步固定采样保留原基线；A/B/D/E/G 固定相同采样计划，C/F/H 明确比较调度与预算。
+
+新增 **Sensor Trust & Sampling** 查看健康、决策、字节与协方差/回放事件；
+**Data Replay** 支持上传 CSV、字段/单位配置、预览、显式运行和多估计器对照；
+**Adaptive Experiments** 可选择 A–H 组、变体、种子和时长，读取 Simulation Lab 的故障/预算配置。
+修改参数不会自动启动实验。成功结果可恢复，失败诊断和上次成功结果分别保留。
+
+已读取用户下载的南非温室公开数据，按时间质量预先保留开发片段 1,717 行、独立回放片段 859 行。
+原文件有重复/跳变等时间问题，未自动修正日期。处理、许可、哈希、排除规则和复现步骤见
+[数据回放与来源](docs/DATA_REPLAY.md)。原始数据不会提交到 Git。
+
+**负面结果也保留**：该公开片段中，默认可信度加权 EKF 明显差于原观测校正法和普通 EKF。
+不能把测量一致性当成潜在真实状态的精度，也不能将本地发送减少等同于实际能耗降低。
+新功能的公式、参数单位和边界见 [传感器与估计](docs/SENSOR_TRUST_ESTIMATION.md)、
+[采样与资源](docs/ADAPTIVE_SAMPLING.md) 和 [实际结果](docs/RESULTS.md)。
 
 ## 结果与文档
 
@@ -73,8 +107,8 @@ ruff format --check .
 刷新可恢复最近成功实验，侧边栏可选择历史结果；草稿跨工作区保留，浏览器刷新后草稿重新初始化。
 未完成的运行没有成功标记，不会被恢复为成功结果。`AGRITWIN_RESULTS_DIR` 可设置其他本地结果根目录。
 
-配置故障、实际记录、校验拒绝、推导的回退条件与观察到的恢复分别标注。没有自动漂移/卡死检测器；
-重叠的随机缺测与注入缺测不能仅凭 NaN 区分。回退依据记录的输入有效性与年龄推导，不依据动作形状猜测。
+配置故障、实际记录、校验拒绝、启发式健康诊断与观察到的恢复分别标注。疑似/持续异常不证明故障原因；
+模型失配也可能触发告警。回退依据输入有效性、年龄与 EKF 标准差限制，不依据动作形状猜测。
 缺测不补零、不连线；误差使用独立单位坐标轴。单个有效种子的标准差未定义，不显示为零，也不生成未经计算的置信区间。
 可导出 CSV/JSON 或准备完整 ZIP；界面不会上传数据。CLI 复现方式保持不变。
 生成结果保留在本地 `results/`，默认不提交到 Git。

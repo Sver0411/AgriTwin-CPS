@@ -17,3 +17,16 @@ accuracy of a real greenhouse model or wireless reliability. A useful outcome ca
 case, a tie, or a tradeoff between accuracy, environmental violations and control effort.
 No novelty or state-of-the-art claim is made. No academic references are included in this initial
 release, so there are no unverified paper titles, authors, years or DOI claims.
+
+## 2.0 trust and resource questions
+
+- Can heuristic trust detect persistent discrepancies without mistaking real/model dynamics for faults?
+- When does trust-weighted R help, and when does rejection prevent recovery or worsen tracking?
+- How much does timestamp-aligned replay change error under fixed sampling and equal transport limits?
+- Which predicted-change/uncertainty/trust/risk policies offer useful error/traffic tradeoffs?
+- What happens when budgets run out, or remote telemetry dominates total application bytes?
+- How do conclusions change under mismatch, quantized public measurements and assumed forcing?
+
+A–H are controlled simulation studies; public-data measurement consistency is a separate empirical
+subsystem check. Neither establishes full field-control validity. Current negative outcomes guide
+future hypotheses; they do not authorize re-tuning and relabeling the same final test as unseen.

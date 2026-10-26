@@ -5,6 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from agritwin_cps.ui.adaptive_views import adaptive_experiments, data_replay, trust_sampling
 from agritwin_cps.ui.views import (
     experiment_comparison,
     header,
@@ -27,5 +28,11 @@ elif page == "Simulation Lab":
     simulation_lab(ROOT, RESULTS)
 elif page == "State & Fault Analysis":
     state_analysis(st.session_state.lab_experiment)
+elif page == "Sensor Trust & Sampling":
+    trust_sampling(st.session_state.lab_experiment)
+elif page == "Data Replay":
+    data_replay(ROOT, RESULTS)
+elif page == "Adaptive Experiments":
+    adaptive_experiments(ROOT, RESULTS)
 else:
     experiment_comparison(st.session_state.lab_experiment, RESULTS)

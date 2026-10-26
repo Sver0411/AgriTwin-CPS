@@ -71,3 +71,29 @@ Pending commands beyond the horizon are counted separately from failed commands.
 estimation; `control/` implements two policies; `communication/` models message transport;
 `simulation/` orchestrates runs and artifacts; `experiments/` defines sweeps, metrics and paired
 statistics; `visualization/` renders computed data. The optional `app.py` calls the same engine.
+
+## 2.0 additions
+
+The pre-sampling scheduler receives predicted state, available SD, prior health/ages, safe ranges
+and local outage status. Sensor generation occurs only on sampling decisions; local sending has a
+separate byte budget. All exogenous draws retain their original time index. Remote telemetry is
+independent of this budget and still sent each step.
+
+Delivered packets feed both timestamp validation and sensor health. Health uses model predictions
+at generation time where EKF history exists (current prediction otherwise). The estimator factory
+selects the two baselines or EKF/trust-EKF. Only trust-EKF uses health-adjusted R. Current health
+memory does not rewind on reordered packets. EKF replay uses its own bounded generation-indexed
+history rather than the threshold controller's latest-reading cache, which still rejects obsolete
+updates to the active sensor display/cache. Transport expiry remains a separate earlier filter.
+
+The controller consumes cached observations or estimates; an EKF uncertainty safeguard can mark
+estimated channels invalid before calling the unchanged hysteretic control algorithm. Per-channel
+validity and uncertainty flags explain fallback. Engine-generated evaluator labels are saved but
+never passed to health/estimation/sampling. `health_events.csv`, `sampling_events.csv` and
+`estimator_events.csv` are additive artifacts; historical v1 results remain readable without them.
+
+External CSV replay is a separate information path: import/units/time sorting → selected partition
+→ chronological delayed/masked packets → same health and estimator → measurement-consistency
+metrics. It does not instantiate a plant, controller or synthetic true_state. The seven-workspace
+Streamlit interface calls these same writers and loads completed artifacts, with explicit start,
+configuration trace, saved-result restoration and failure diagnostics. See DATA_REPLAY.md.

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from agritwin_cps.config import SimulationConfig
 from agritwin_cps.simulation.engine import simulate
@@ -62,3 +63,36 @@ def test_controller_comparison_uses_common_random_numbers():
         noise_a = a[f"sensor_{channel}"] - a[f"true_{channel}"]
         noise_b = b[f"sensor_{channel}"] - b[f"true_{channel}"]
         np.testing.assert_allclose(noise_a, noise_b, atol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize("sensor_max_age", [1, 4])
+def test_threshold_observation_age_is_independent_of_estimator(sensor_max_age):
+    data = SimulationConfig(
+        steps=12,
+        initial_state=(35, 60, 0.2),
+        sensor={"delay_steps": 3, "noise_std": (0, 0, 0)},
+        controller={"max_sensor_age_steps": sensor_max_age},
+    ).model_dump()
+    data["estimator"]["max_observation_age_steps"] = 1
+    strict = simulate(SimulationConfig.model_validate(data), 7, "threshold").trajectory
+    data["estimator"]["max_observation_age_steps"] = 4
+    permissive = simulate(SimulationConfig.model_validate(data), 7, "threshold").trajectory
+    # An unused estimator setting must not change the baseline's observations or closed loop.
+    columns = [
+        "observed_temperature",
+        "command_ventilation",
+        "command_irrigation",
+        "true_temperature",
+        "true_moisture",
+    ]
+    pd.testing.assert_frame_equal(strict[columns], permissive[columns])
+    assert strict.loc[3, "estimation_age_temperature_steps"] == 4
+    assert permissive.loc[3, "estimation_age_temperature_steps"] == 3
+    if sensor_max_age == 4:
+        assert strict.loc[3, "observed_timestamp_temperature_step"] == 0
+        assert strict.loc[3, "command_irrigation"] == 1
+    else:
+        assert strict.observed_temperature.isna().all()
+        assert (strict.command_irrigation == 0).all()
+        twin = simulate(SimulationConfig.model_validate(data), 7, "twin_assisted").trajectory
+        assert twin.loc[3, "observed_timestamp_temperature_step"] == 0

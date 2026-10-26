@@ -33,7 +33,15 @@ from agritwin_cps.visualization.plots import (
     metric_comparison_figure,
 )
 
-PAGES = ("Overview", "Simulation Lab", "State & Fault Analysis", "Experiment Comparison")
+PAGES = (
+    "Overview",
+    "Simulation Lab",
+    "State & Fault Analysis",
+    "Experiment Comparison",
+    "Sensor Trust & Sampling",
+    "Data Replay",
+    "Adaptive Experiments",
+)
 
 # Metric names are the existing metrics.json keys, never newly defined UI calculations.
 METRICS = {
@@ -205,6 +213,34 @@ def initialize(project_root: Path, results_root: Path):
         st.session_state.lab_experiment = load_experiment(saved[0]) if saved else None
 
 
+METRICS["Sampling & trust"] = {
+    "sample_count": ("Sample count", "count", "Interpret with estimation/control outcomes"),
+    "local_application_bytes": ("Local application bytes", "byte", "Lower resource proxy"),
+    "total_application_bytes": ("Total application bytes", "byte", "Includes remote telemetry"),
+    "diagnosis_precision_temperature": (
+        "Temperature diagnosis precision",
+        "fraction",
+        "Undefined without alarms",
+    ),
+    "diagnosis_recall_temperature": (
+        "Temperature diagnosis recall",
+        "fraction",
+        "Undefined without faults",
+    ),
+    "diagnosis_false_positive_rate_temperature": (
+        "Temperature false positive rate",
+        "fraction",
+        "Lower is preferable",
+    ),
+    "empirical_95_coverage_temperature": (
+        "Temperature empirical 95% coverage",
+        "fraction",
+        "Model diagnostic, not guarantee",
+    ),
+    "uncertainty_fallback_seconds": ("Uncertainty fallback duration", "s", "Interpret with safety"),
+}
+
+
 def header():
     st.html(STYLE)
     left, right = st.columns([5, 1])
@@ -216,7 +252,12 @@ def header():
             "state estimation, closed-loop control, and resilience testing.</p>"
         )
     with right:
-        st.html('<span class="lab-tag">SIMULATION ENVIRONMENT</span>')
+        mode = (
+            "OFFLINE DATA REPLAY"
+            if st.session_state.get("lab_page") == "Data Replay"
+            else "SIMULATION ENVIRONMENT"
+        )
+        st.html(f'<span class="lab-tag">{mode}</span>')
         st.caption("Local runtime · Ready")
     st.divider()
 
@@ -256,7 +297,9 @@ def sidebar(results_root: Path) -> str:
                 on_change=restore,
             )
         st.divider()
-        st.caption("Synthetic model data only.\n\nNo public-data or physical-hardware validation.")
+        st.caption(
+            "Synthetic simulation + offline data replay.\n\nNo full-model or hardware validation."
+        )
     return page
 
 
@@ -557,7 +600,7 @@ def state_analysis(snapshot: ExperimentRecord | None):
             )
         st.caption(
             "Configured windows are not detections. Input validation does not identify drift "
-            "or stuck-at causes. No automatic drift/stuck detector is implemented. "
+            "or stuck-at causes. Sensor Trust & Sampling shows the separate heuristic detector. "
             "Only observed recoveries have markers; censored events remain in the table below."
         )
         with st.expander("Recovery and remote synchronization records"):
@@ -675,10 +718,12 @@ def experiment_comparison(snapshot: ExperimentRecord | None, results_root: Path)
         per_case[["seed", "controller", metric]].rename(columns={metric: f"{title} ({unit})"})
     )
     if not paired.empty:
-        st.markdown("#### Paired difference · twin minus threshold")
-        display_table(paired[["seed", metric]].rename(columns={metric: f"Difference ({unit})"}))
+        st.markdown("#### Paired difference · variant minus declared reference")
+        display_table(
+            paired[["controller", "seed", metric]].rename(columns={metric: f"Difference ({unit})"})
+        )
         st.caption(
-            "A negative delta favors the twin only for metrics where lower is preferable. "
+            "A negative delta favors the variant only for metrics where lower is preferable. "
             "Effort proxies must be interpreted with environmental safety."
         )
     else:
@@ -688,7 +733,7 @@ def experiment_comparison(snapshot: ExperimentRecord | None, results_root: Path)
         selected = st.selectbox(
             "Source run",
             runs,
-            format_func=lambda item: f"{CONTROLLERS[item[1]]} · seed {item[0]}",
+            format_func=lambda item: f"{CONTROLLERS.get(item[1], item[1])} · seed {item[0]}",
             key=f"source_run_{source.name}_{case}",
         )
         # Existing CLI groups use scenario/seed/controller; UI groups use runs/seed/controller.
