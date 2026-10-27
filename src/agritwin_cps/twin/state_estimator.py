@@ -62,15 +62,33 @@ class StateEstimator:
         self.missing_steps = np.zeros(3, dtype=int)
 
     def correct(self, packets: list[Observation], step: int, weights=None) -> np.ndarray:
+        first_event = len(self.events)
         accepted = self.observations.update(packets, step)
         used = np.isfinite(accepted) & (self.config.method == "observation_corrected")
         self.missing_steps = np.where(used, 0, self.missing_steps + 1)
         # A delayed reading is an approximate current-state correction, discounted by age.
         age = self.observations.ages(step)
         gain = np.array(self.config.gain) / (1 + age)
+        for event in self.events[first_event:]:
+            i = event["channel_index"]
+            assimilated = bool(
+                used[i]
+                and gain[i] > 0
+                and event["reason"] == "accepted"
+                and event["generated_step"] == self.observations.timestamps[i]
+            )
+            event.update(
+                assimilated=assimilated,
+                target_step=step,
+                effective_gain=float(gain[i]) if assimilated else None,
+            )
         self.state[used] += gain[used] * (accepted[used] - self.state[used])
         self.state = np.clip(self.state, LOWER, UPPER)
         return self.state.copy()
+
+    @property
+    def events(self):
+        return self.observations.events
 
     def ages(self, step: int) -> np.ndarray:
         if self.config.method == "model_only":

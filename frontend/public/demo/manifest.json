@@ -1,0 +1,13 @@
+[
+  "trajectory.csv",
+  "config.yaml",
+  "metadata.json",
+  "schema.json",
+  "health_events.csv",
+  "communication_events.csv",
+  "actuator_events.csv",
+  "sampling_events.csv",
+  "recovery_events.csv",
+  "estimator_events.csv",
+  "run.json"
+]

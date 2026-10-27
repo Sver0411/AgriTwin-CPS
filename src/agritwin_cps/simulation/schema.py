@@ -1,8 +1,37 @@
 """Machine-readable artifact units; matching formulas are in docs/METRICS.md."""
 
+ESTIMATOR_EVENT_COLUMNS = [
+    "received_step",
+    "generated_step",
+    "channel_index",
+    "target_step",
+    "reason",
+    "assimilated",
+    "effective_gain",
+    "effective_variance",
+    "trust",
+]
+ACTUATOR_EVENT_COLUMNS = [
+    "generated_step",
+    "execution_step",
+    "status",
+    "ventilation",
+    "irrigation",
+    "actual_ventilation",
+    "actual_irrigation",
+]
+
 
 def unit_for(name: str) -> str:
-    if name.startswith(("control_valid_", "fault_label_")) or name in (
+    if name.startswith(
+        (
+            "control_valid_",
+            "fault_label_",
+            "sensor_missing_",
+            "random_dropout_",
+            "received_fault_exposure_",
+        )
+    ) or name in (
         "sampled",
         "uncertainty_fallback",
     ):
@@ -51,7 +80,7 @@ def unit_for(name: str) -> str:
 
 def artifact_schema(trajectory_columns, metrics) -> dict:
     return {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "time_convention": "left endpoint; action applies over [k,k+1)",
         "missing_values": "CSV: empty cell; JSON: null; never interpreted as zero",
         "trajectory_units": {name: unit_for(name) for name in trajectory_columns},
@@ -72,7 +101,9 @@ def artifact_schema(trajectory_columns, metrics) -> dict:
                 "received/generated times: steps; reason includes replay/rejection policy"
             ),
             "observation_events.csv": "component validation with generation and reception steps",
-            "actuator_events.csv": "Step timestamps; requested actions [0,1]; status",
+            "actuator_events.csv": (
+                "Step timestamps; requested and actual actions [0,1] at execution; status"
+            ),
             "recovery_events.csv": "Windows: steps; recovery: seconds; errors: channel units",
         },
     }

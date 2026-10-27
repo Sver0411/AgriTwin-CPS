@@ -24,9 +24,12 @@ def test_dwell_recovery_censoring_and_event_at_horizon():
         steps=10, communication={"remote": {"outages": [{"start_step": 3, "end_step": 12}]}}
     )
     metrics, events = compute_metrics(simulate(cfg, 3, "threshold"), cfg)
-    assert metrics["remote_recovery_censored_count"] == 1
+    assert metrics["remote_recovery_censored_count"] is None
+    assert metrics["remote_resync_censored_count"] == 1
     assert metrics["remote_resync_seconds"] is None
-    assert events.estimation_recovery_censored.all()
+    assert events.estimation_recovery_censored.isna().all()
+    assert not events.estimation_recovery_applicable.any()
+    assert events.remote_resync_censored.all()
 
 
 def test_violation_duration_effort_and_activations():

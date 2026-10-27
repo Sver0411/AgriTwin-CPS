@@ -115,3 +115,22 @@ these settings. Public-data group I is a separate offline measurement runner, no
 Run each group with `agritwin adaptive --name GROUP --config configs/adaptive.yaml --output NEW_DIR`.
 Use DATA_REPLAY.md for `replay-experiment`, original source attribution, split boundaries and
 limitations. No confidence intervals, significance tests or calibrated fault probabilities are claimed.
+
+## Credibility audit and viewer checks (2026-10-27)
+
+Artifact semantics 2.1 changes evidence labels and conditional metrics, not model/controller/
+estimation equations. Keep original artifacts and their source hashes. Re-run comparisons with
+unchanged configurations and seeds; never compare different metric versions without noting the
+mask change. In particular, sampled fault exposure differs from configured-window exposure,
+remote resynchronization differs from local estimation recovery, and positive-delay masked-target
+agreement must not be called independent heldout validation. Exact formulas are in METRICS.md.
+
+The audited public-data segments remain unchanged: development before the frozen boundary
+2022-12-23T00:00:00+02:00, final records on local December 28–30. UTC-normalized source files and
+raw SHA-256 values are checked against the saved preparation audit. No final-record parameter
+search was performed. Repeated runs of the already seen final segment are regression checks,
+not a new untouched test set. Both favorable and unfavorable numerical outcomes are retained.
+
+Viewer tests compare parsed values to actual saved CSVs and use a single frame index for scene,
+state, device details and trend cursor. Separate browser checks exercise actual WebGL rendering,
+scene picking/orbit, playback and event jumps. They do not establish spatial/physical fidelity.

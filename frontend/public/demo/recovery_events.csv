@@ -1,0 +1,5 @@
+kind,start_step,end_step,observation_stop_step,estimation_recovery_seconds,estimation_recovery_censored,estimation_recovery_applicable,remote_resync_seconds,remote_resync_censored,sync_error_temperature,sync_error_humidity,sync_error_moisture
+sensor,24,40,48,0.0,False,True,,,,,
+sensor,48,56,96,0.0,False,True,,,,,
+local,56,66,96,0.0,False,True,,,,,
+remote,70,78,96,,,False,0.0,False,0.0,0.0,0.0

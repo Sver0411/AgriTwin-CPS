@@ -104,3 +104,33 @@ ADAPTIVE_SAMPLING.md, DATA_REPLAY.md, EXPERIMENT_PROTOCOL.md and METRICS.md. Pri
 measured forcing/action alignment and calibration on separate records, followed by newly reserved
 validation data and diagnosis/model-mismatch ablations. Suggested English commit title:
 `Add trust-aware estimation, sampling, and audited data replay`.
+
+
+## 2026-10-27 — Credibility semantics and offline 3D replay
+
+Audited replay timing/masks, sparse-sampling fault flags, component assimilation, link/status
+accounting, actuator execution, recovery and source partition provenance before changes.
+Confirmed sparse-sampling fault-label contamination and ambiguous delayed-target terminology;
+no mask/time-index arithmetic shift or public partition overlap was found. Added explicit
+assimilation/exposure records, corrected superseded batch records, separated local/remote
+conditional metrics and made remote estimate recovery inapplicable. Estimation/control/model
+algorithms and evaluation parameters were retained. Raw public records were not edited.
+
+Actual fixed-protocol and supplementary evidence paths, numerical checks and preserved negative
+outcomes are documented in RESULTS.md. Both saved prepared-data hashes and raw-source hashes
+match their original audit; no new final-record parameter selection was performed.
+
+Added a separate React/TypeScript/Vite/Three.js offline viewer with local artifact import,
+schematic greenhouse, instanced plants, device picking, synchronized playback/cards/details/
+curves/events and explicit missing/source handling. The bundled demo comes from the Python
+engine. Simplified Chinese functional headings replace promotional slogans and decorative text.
+No real-time service, hardware adapter, spatial field or physical validation was added.
+
+Verification: 82 Python tests passed in 29.82 s; 8 frontend tests passed in 1.74 s; Ruff lint,
+Ruff format (71 files), Prettier, TypeScript and Vite production build passed locally. Vite reports
+its large-chunk advisory because Three.js is included. A locked clean frontend installation
+succeeded. The production browser rendered WebGL without console errors/warnings. Browser
+checks also covered local 859-row public replay import with no truth curve, failed-import
+preservation, device picking, orbit, playback and recovery-event jumps. CI was added; the verification recorded here was executed locally. GitHub Actions records
+remote runs separately. Tests retain censoring assertions and cover the corrected semantics
+rather than removing checks.

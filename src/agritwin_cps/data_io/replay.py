@@ -16,6 +16,7 @@ from agritwin_cps.models.greenhouse import CHANNELS, Action, Disturbance
 from agritwin_cps.sensors.health import SensorHealth
 from agritwin_cps.sensors.virtual_sensor import Observation
 from agritwin_cps.simulation.runner import environment_metadata, reserve_output, write_json
+from agritwin_cps.simulation.schema import ESTIMATOR_EVENT_COLUMNS
 from agritwin_cps.twin.ekf import create_estimator
 from agritwin_cps.visualization.plots import save_replay
 
@@ -28,6 +29,7 @@ class ReplayConfig(Settings):
     development_end_time: str | None = None
     dropout_probability: float = Field(default=0, ge=0, le=1)
     delay_rows: int = Field(default=0, ge=0)
+    packet_loss_probability: float = Field(default=0, ge=0, le=1)
     max_gap_seconds: float = Field(default=86400, gt=0)
     assumed_outdoor_temperature_c: float = 21
     assumed_outdoor_humidity_pct: float = Field(default=65, ge=0, le=100)
@@ -98,6 +100,8 @@ def write_replay(
     estimator = create_estimator(simulation.estimator, simulation.twin, simulation.dt_seconds)
     health = SensorHealth(simulation.health, simulation.dt_seconds)
     draws = np.random.default_rng(seed).random((len(frame), 3))
+    packet_draws = np.random.default_rng(np.random.SeedSequence([seed, 971])).random(len(frame))
+    communication = []
     action = Action(replay.assumed_ventilation, replay.assumed_irrigation)
     disturbance = Disturbance(
         replay.assumed_outdoor_temperature_c,
@@ -111,7 +115,10 @@ def write_replay(
         generated = k - replay.delay_rows
         packets, weights = [], {}
         observed = np.full(3, np.nan)
-        if generated >= 0:
+        packet_delivered = generated >= 0 and (
+            packet_draws[generated] >= replay.packet_loss_probability
+        )
+        if packet_delivered:
             observed = frame.loc[generated, list(CHANNELS)].to_numpy(dtype=float, copy=True)
             observed[draws[generated] < replay.dropout_probability] = np.nan
             packet = Observation(generated, tuple(observed))
@@ -132,7 +139,30 @@ def write_replay(
                 health.states[i], health.reasons[i] = "unknown", "unmapped_channel"
                 health.abnormal_steps[i] = 0
         health.record(k)
+        first_event = len(estimator.events)
         estimated = estimator.correct(packets, k, weights)
+        updates = [e for e in estimator.events[first_event:] if e.get("assimilated")]
+        communication.append(
+            dict(
+                link="replay",
+                message_id=k,
+                generated_step=k,
+                sent_step=k,
+                scheduled_step=k + replay.delay_rows,
+                received_step=k + replay.delay_rows
+                if packet_draws[k] >= replay.packet_loss_probability
+                and k + replay.delay_rows < len(frame)
+                else None,
+                resolved_step=k
+                if packet_draws[k] < replay.packet_loss_probability
+                else min(k + replay.delay_rows, len(frame)),
+                status="packet_loss"
+                if packet_draws[k] < replay.packet_loss_probability
+                else "delivered"
+                if k + replay.delay_rows < len(frame)
+                else "pending_at_horizon",
+            )
+        )
         std = (
             np.sqrt(np.diag(estimator.covariance))
             if hasattr(estimator, "covariance")
@@ -141,14 +171,17 @@ def write_replay(
         row = dict(
             step=k,
             timestamp=frame.timestamp.iloc[k].isoformat(),
-            received_generated_row=generated if generated >= 0 else None,
+            state_timestamp=frame.timestamp.iloc[k].isoformat(),
+            evaluation_timestamp=frame.timestamp.iloc[k].isoformat(),
+            received_generated_row=generated if packet_delivered else None,
+            observation_received=bool(packet_delivered),
             observed_timestamp=frame.timestamp.iloc[generated].isoformat()
-            if generated >= 0
+            if packet_delivered
             else None,
             observation_delay_seconds=(
                 frame.timestamp.iloc[k] - frame.timestamp.iloc[generated]
             ).total_seconds()
-            if generated >= 0
+            if packet_delivered
             else None,
         )
         for i, channel in enumerate(CHANNELS):
@@ -157,6 +190,16 @@ def write_replay(
             row[f"estimated_{channel}"] = estimated[i]
             row[f"prediction_{channel}"] = prior[i]
             row[f"std_{channel}"] = std[i]
+            used = [e["generated_step"] for e in updates if e.get("channel_index") == i]
+            row[f"assimilated_{channel}"] = bool(used)
+            row[f"assimilated_source_row_{channel}"] = used[-1] if used else None
+            row[f"assimilated_source_timestamp_{channel}"] = (
+                frame.timestamp.iloc[used[-1]].isoformat() if used else None
+            )
+            row[f"trust_{channel}"] = health.trust(k)[i] if mapping.columns.get(channel) else np.nan
+            row[f"observation_age_{channel}_steps"] = (
+                k - generated if packet_delivered and np.isfinite(observed[i]) else np.nan
+            )
             row[f"artificially_heldout_{channel}"] = draws[k, i] < replay.dropout_probability
         rows.append(row)
         if k + 1 < len(frame):
@@ -174,6 +217,12 @@ def write_replay(
             (
                 "heldout_agreement",
                 "estimated",
+                (draws[:, CHANNELS.index(channel)] < replay.dropout_probability)
+                & (replay.delay_rows == 0),
+            ),
+            (
+                "masked_target_prediction_agreement",
+                "estimated",
                 draws[:, CHANNELS.index(channel)] < replay.dropout_probability,
             ),
         ):
@@ -190,9 +239,10 @@ def write_replay(
     frame.to_csv(output / "imported.csv", index=False)
     trajectory.to_csv(output / "trajectory.csv", index=False)
     pd.DataFrame(health.events).to_csv(output / "health_events.csv", index=False)
-    pd.DataFrame(
-        getattr(estimator, "events", []), columns=["received_step", "generated_step", "reason"]
-    ).to_csv(output / "estimator_events.csv", index=False)
+    pd.DataFrame(estimator.events, columns=ESTIMATOR_EVENT_COLUMNS).to_csv(
+        output / "estimator_events.csv", index=False
+    )
+    pd.DataFrame(communication).to_csv(output / "communication_events.csv", index=False)
     write_json(output / "import_statistics.json", statistics)
     write_json(output / "metrics.json", metrics)
     write_json(
@@ -210,7 +260,16 @@ def write_replay(
             "partition": replay.partition,
             "assumed_inputs": replay.model_dump(mode="json"),
             "closed_loop_validation": False,
-            "pending_delayed_row_count": min(replay.delay_rows, len(frame)),
+            "pending_delayed_row_count": sum(
+                e["status"] == "pending_at_horizon" for e in communication
+            ),
+            "metric_semantics_version": "2.1",
+            "heldout_agreement_available": replay.delay_rows == 0,
+            "heldout_agreement_limitation": (
+                "Artificial component masking, not independent physical truth; "
+                "available only at zero delay."
+                " Positive-delay masked targets use masked_target_prediction_agreement."
+            ),
         },
     )
     from agritwin_cps.simulation.schema import unit_for
@@ -228,11 +287,14 @@ def write_replay(
             "trajectory_units": {
                 name: (
                     "ISO 8601 UTC"
-                    if name in ("timestamp", "observed_timestamp")
+                    if "timestamp" in name
+                    else "original row count"
+                    if name.endswith("_steps")
                     else "original row index"
-                    if name in ("step", "received_generated_row")
+                    if name in ("step", "received_generated_row") or "source_row" in name
                     else "boolean"
-                    if name.startswith("artificially_heldout_")
+                    if name.startswith(("artificially_heldout_", "assimilated_"))
+                    and "source" not in name
                     else unit_for(name)
                 )
                 for name in trajectory.columns

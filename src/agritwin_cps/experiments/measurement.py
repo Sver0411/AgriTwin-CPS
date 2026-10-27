@@ -30,12 +30,14 @@ def run_measurement_experiment(
         encoding="utf-8",
     )
     cases = [("as_configured", replay)]
-    if replay.dropout_probability or replay.delay_rows:
+    if replay.dropout_probability or replay.delay_rows or replay.packet_loss_probability:
         cases.insert(
             0,
             (
                 "unmodified_delivery",
-                replay.model_copy(update={"dropout_probability": 0, "delay_rows": 0}),
+                replay.model_copy(
+                    update={"dropout_probability": 0, "delay_rows": 0, "packet_loss_probability": 0}
+                ),
             ),
         )
     total = len(cases) * len(methods) * len(simulation.seeds)
@@ -82,7 +84,7 @@ def run_measurement_experiment(
 
         for scenario, _ in cases:
             subset = frame[frame.scenario == scenario]
-            for prefix in ("measurement", "preupdate", "heldout"):
+            for prefix in ("measurement", "preupdate", "heldout", "masked_target_prediction"):
                 metric = f"{prefix}_agreement_mae_temperature"
                 if subset[metric].notna().any():
                     figure = metric_comparison_figure(

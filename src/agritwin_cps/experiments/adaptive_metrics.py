@@ -46,6 +46,15 @@ def adaptive_metrics(result, config) -> dict:
         metrics[f"{link}_sent_message_count"] = len(events)
         metrics[f"{link}_received_message_count"] = int(delivered.sum())
         metrics[f"{link}_lost_message_count"] = int((~delivered & ~pending).sum())
+        for status in (
+            "delivered",
+            "packet_loss",
+            "expired",
+            "disconnected_at_send",
+            "disconnected_at_receive",
+            "pending_at_horizon",
+        ):
+            metrics[f"{link}_{status}_message_count"] = int((events.status == status).sum())
         metrics[f"{link}_pending_message_count"] = int(pending.sum())
         metrics[f"{link}_application_bytes"] = int(events.application_bytes.sum())
     metrics["total_application_bytes"] = sum(

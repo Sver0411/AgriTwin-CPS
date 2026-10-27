@@ -1,0 +1,182 @@
+name: 3d-viewer-synthetic-demo
+steps: 96
+dt_seconds: 300
+seeds:
+- 11
+initial_state:
+- 24.0
+- 65.0
+- 0.45
+process_noise_std_per_sqrt_h:
+- 0.12
+- 0.4
+- 0.001
+plant:
+  heat_exchange_per_h: 0.18
+  solar_heat_c_per_h: 4.0
+  ventilation_heat_per_h: 1.2
+  humidity_exchange_per_h: 0.12
+  ventilation_humidity_per_h: 0.9
+  evaporation_rh_per_h: 4.0
+  irrigation_rh_per_h: 2.0
+  irrigation_fraction_per_h: 0.14
+  moisture_loss_per_h: 0.012
+  drainage_per_h: 0.2
+  drainage_threshold: 0.65
+twin:
+  heat_exchange_per_h: 0.18
+  solar_heat_c_per_h: 4.0
+  ventilation_heat_per_h: 1.2
+  humidity_exchange_per_h: 0.12
+  ventilation_humidity_per_h: 0.9
+  evaporation_rh_per_h: 4.0
+  irrigation_rh_per_h: 2.0
+  irrigation_fraction_per_h: 0.14
+  moisture_loss_per_h: 0.012
+  drainage_per_h: 0.2
+  drainage_threshold: 0.65
+weather:
+  mean_temperature_c: 21.0
+  amplitude_temperature_c: 7.0
+  mean_humidity_pct: 65.0
+  temperature_noise_c: 0.3
+  humidity_noise_pct: 1.0
+sensor:
+  noise_std:
+  - 0.3
+  - 1.5
+  - 0.01
+  bias:
+  - 0.0
+  - 0.0
+  - 0.0
+  dropout_probability: 0.0
+  delay_steps: 1
+  faults:
+  - start_step: 24
+    end_step: 40
+    channel: temperature
+    kind: bias
+    magnitude: 5.0
+  - start_step: 48
+    end_step: 56
+    channel: moisture
+    kind: missing
+    magnitude: 0.0
+communication:
+  local:
+    packet_loss: 0.0
+    delay_steps: 0
+    jitter_steps: 0
+    max_age_steps: 5
+    outages:
+    - start_step: 56
+      end_step: 66
+  remote:
+    packet_loss: 0.0
+    delay_steps: 0
+    jitter_steps: 0
+    max_age_steps: 5
+    outages:
+    - start_step: 70
+      end_step: 78
+actuator:
+  delay_steps: 1
+  min_interval_steps: 3
+  failures:
+  - start_step: 33
+    end_step: 37
+controller:
+  temperature_on_c: 28.0
+  temperature_off_c: 25.0
+  humidity_on_pct: 85.0
+  humidity_off_pct: 75.0
+  moisture_on: 0.34
+  moisture_off: 0.48
+  max_sensor_age_steps: 5
+  max_prediction_age_steps: 30
+  fallback_ventilation: 0.5
+  temperature_safe_c:
+  - 16.0
+  - 32.0
+  humidity_safe_pct:
+  - 35.0
+  - 90.0
+  moisture_safe:
+  - 0.25
+  - 0.75
+  recovery_dwell_steps: 3
+  recovery_tolerance:
+  - 1.0
+  - 5.0
+  - 0.03
+estimator:
+  method: trust_ekf
+  initial_state:
+  - 23.0
+  - 62.0
+  - 0.43
+  gain:
+  - 0.35
+  - 0.3
+  - 0.4
+  max_observation_age_steps: 5
+  initial_std:
+  - 2.0
+  - 8.0
+  - 0.08
+  process_std_per_sqrt_h:
+  - 0.12
+  - 0.4
+  - 0.001
+  measurement_std:
+  - 0.3
+  - 1.5
+  - 0.01
+  max_std:
+  - 5.0
+  - 20.0
+  - 0.2
+  replay_history_steps: 4
+  too_old_policy: ignore
+  min_update_trust: 0.1
+health:
+  method: persistent
+  residual_scale:
+  - 1.0
+  - 5.0
+  - 0.03
+  residual_threshold: 3.0
+  persistence_steps: 3
+  ewma_alpha: 0.2
+  max_rate_per_h:
+  - 30.0
+  - 100.0
+  - 0.5
+  stuck_tolerance:
+  - 0.001
+  - 0.005
+  - 1.0e-05
+  stuck_steps: 8
+  missing_age_steps: 6
+  delay_warning_steps: 2
+sampling:
+  strategy: fixed
+  fixed_interval_steps: 2
+  min_interval_steps: 1
+  max_interval_steps: 12
+  change_scale:
+  - 1.0
+  - 5.0
+  - 0.03
+  change_threshold: 1.0
+  uncertainty_scale:
+  - 1.0
+  - 5.0
+  - 0.03
+  uncertainty_threshold: 1.0
+  trust_threshold: 0.5
+  max_valid_age_steps: 12
+  sample_budget: null
+  local_byte_budget: null
+  suppress_send_during_outage: false

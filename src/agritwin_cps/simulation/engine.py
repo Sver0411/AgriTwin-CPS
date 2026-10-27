@@ -16,6 +16,7 @@ from agritwin_cps.models.weather import generate_weather
 from agritwin_cps.sampling.scheduler import SamplingScheduler
 from agritwin_cps.sensors.health import SensorHealth
 from agritwin_cps.sensors.virtual_sensor import Observation, VirtualSensor
+from agritwin_cps.simulation.schema import ACTUATOR_EVENT_COLUMNS, ESTIMATOR_EVENT_COLUMNS
 from agritwin_cps.twin.ekf import create_estimator
 from agritwin_cps.twin.state_estimator import ObservationCache
 
@@ -145,9 +146,15 @@ def simulate(config: SimulationConfig, seed: int, strategy: Strategy) -> Simulat
             "local_control_executed": True,
             "sensor_generated_step": step if decision["generated"] else -1,
             "sampled": decision["sampled"],
-            "sensor_fault_active": (
-                any(f.active(step) for f in config.sensor.faults)
-                or bool((dropout_draws[step] < config.sensor.dropout_probability).any())
+            "sensor_fault_configured": any(f.active(step) for f in config.sensor.faults),
+            # Exposure means an injection was applied to a generated sample, not diagnosis.
+            "sensor_fault_active": bool(
+                decision["sampled"]
+                and (
+                    any(f.active(step) for f in config.sensor.faults)
+                    or (dropout_draws[step] < config.sensor.dropout_probability).any()
+                    or any(config.sensor.bias)
+                )
             ),
             "local_outage": local.disconnected(step),
             "remote_outage": remote.disconnected(step),
@@ -158,12 +165,27 @@ def simulate(config: SimulationConfig, seed: int, strategy: Strategy) -> Simulat
         for i, channel in enumerate(CHANNELS):
             # Ground-truth labels are for the evaluator only; no algorithm consumes them.
             row[f"fault_label_{channel}"] = bool(
-                any(f.channel == channel and f.active(step) for f in config.sensor.faults)
-                or (
-                    decision["sampled"]
-                    and dropout_draws[step, i] < config.sensor.dropout_probability
+                decision["sampled"]
+                and (
+                    any(f.channel == channel and f.active(step) for f in config.sensor.faults)
+                    or (
+                        decision["sampled"]
+                        and dropout_draws[step, i] < config.sensor.dropout_probability
+                    )
+                    or config.sensor.bias[i] != 0
                 )
-                or config.sensor.bias[i] != 0
+            )
+            row[f"sensor_missing_{channel}"] = bool(
+                decision["sampled"] and not np.isfinite(observation.values[i])
+            )
+            row[f"random_dropout_{channel}"] = bool(
+                decision["sampled"] and dropout_draws[step, i] < config.sensor.dropout_probability
+            )
+            row[f"received_fault_exposure_{channel}"] = any(
+                (row if packet.generated_step == step else rows[packet.generated_step])[
+                    f"fault_label_{channel}"
+                ]
+                for packet in packets
             )
             row[f"control_valid_{channel}"] = bool(
                 np.isfinite(control_values[i]) and ages[i] <= controller.max_age
@@ -189,10 +211,7 @@ def simulate(config: SimulationConfig, seed: int, strategy: Strategy) -> Simulat
     remote.finalize(config.steps)
     return SimulationResult(
         pd.DataFrame(rows),
-        pd.DataFrame(
-            actuator.events,
-            columns=["generated_step", "execution_step", "status", "ventilation", "irrigation"],
-        ),
+        pd.DataFrame(actuator.events, columns=ACTUATOR_EVENT_COLUMNS),
         pd.DataFrame(
             cache.events, columns=["received_step", "generated_step", "channel_index", "reason"]
         ),
@@ -200,7 +219,5 @@ def simulate(config: SimulationConfig, seed: int, strategy: Strategy) -> Simulat
         pd.DataFrame(local.events + remote.events),
         pd.DataFrame(scheduler.events),
         pd.DataFrame(health.events),
-        pd.DataFrame(
-            getattr(estimator, "events", []), columns=["received_step", "generated_step", "reason"]
-        ),
+        pd.DataFrame(estimator.events, columns=ESTIMATOR_EVENT_COLUMNS),
     )

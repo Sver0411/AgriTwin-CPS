@@ -20,7 +20,7 @@ from agritwin_cps.simulation.engine import Strategy, simulate
 from agritwin_cps.simulation.schema import artifact_schema
 from agritwin_cps.visualization.plots import save_comparison, save_trajectory
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 
 
 def write_json(path: Path, value) -> None:

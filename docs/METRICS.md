@@ -12,15 +12,16 @@ fraction. The endpoint `x[N]` is stored separately. Let `e_i[k]=xhat_i[k]-x_i[k]
 | RMSE | `sqrt(sum(e²)/n)` | Channel unit |
 | Bias | `sum(e)/n` | Channel unit, signed |
 | Valid-observation coverage | Number of steps with a newly accepted component divided by N | Fraction |
-| Error during sensor faults | Same formulas restricted to steps with an active configured sensor window or realized random channel dropout | Channel unit |
-| Error during communication outages | Same formulas restricted to union of configured local/remote outages | Channel unit |
+| Error during sensor faults | Same formulas restricted to sampled steps exposed to a configured injection, nonzero bias or realized channel dropout | Channel unit |
+| Error during communication outages | Separate local and remote masks; legacy pooled union retained | Channel unit |
 | Maximum estimation age | Largest age of usable correction timestamp × dt; model-only age = k+1 | s |
 
 No eligible samples produce null/empty, not zero. Coverage is acceptance per step rather than
-packet delivery ratio or percentage of cached finite values. Fault-period metrics use the union
-of active fault channels and generated-fault time; delayed consequences may extend beyond it.
-Noise alone is not classified as a fault window. Communication-outage errors pool local and
-remote windows; the trajectory flags allow separate reanalysis when both exist.
+packet delivery ratio or percentage of cached finite values. Fault-exposure metrics use the union
+of channels exposed when sampling occurred; delayed consequences may extend beyond it.
+`*_during_sensor_fault_window` separately conditions on configured windows, sampled or not.
+Noise alone is not classified as a fault window. `*_during_local_outage` and `*_during_remote_outage` are separate; the historical
+`*_during_communication_outage` is explicitly a pooled union and must not identify a link effect.
 
 ## Environmental control and proxies
 
@@ -57,7 +58,7 @@ configured failure window. A command carries both actuator requests, so this cou
 not individual motors. Rate-limited commands and commands still pending at the horizon are
 separate counts. Commands and actual actions are recorded separately.
 
-For deterministic sensor-fault, local-outage and remote-outage windows, overlapping/adjacent
+For deterministic sensor-fault and local-outage windows, overlapping/adjacent
 windows within each category are merged. At a window's exclusive end `b`, estimation recovery
 is the earliest `j>=b` with all three channel absolute errors within configured tolerances for
 `recovery_dwell_steps` consecutive samples. The reported delay is `(j-b)*dt`. The start of the
@@ -65,7 +66,9 @@ qualifying dwell, not its completion, is the reported time. Search stops at the 
 that category or the trajectory horizon; events without a complete qualifying dwell are
 **right-censored**. Other fault categories can overlap; recovery is not causal attribution.
 
-Remote resynchronization delay is time from outage end to the first received remote estimate
+Remote outage estimation recovery and its censor count are **not applicable** (null): the
+remote telemetry path does not feed the local estimator. `estimation_recovery_applicable` is false
+for remote events. Remote resynchronization delay is time from outage end to the first received remote estimate
 whose generation timestamp is at/after that end. The message must also pass transport-age and
 component-validity checks. Synchronization error is the absolute difference between the received
 remote cached state and the current local estimate at that first post-recovery delivery, in
@@ -125,10 +128,54 @@ For each link: sent = received + lost + pending-at-horizon. Bytes = 34 × send a
 bytes = local + remote. Mean sample interval = mean step difference of actual samples × dt;
 with fewer than two samples it is null. See ADAPTIVE_SAMPLING.md for scope/serialization rules.
 
-Offline replay uses separate metric names. `measurement_agreement_*` compares current posterior
-with the original measured current row; `preupdate_agreement_*` compares the prior before the
-current received batch; `heldout_agreement_*` selects artificially masked current components whose
-original values exist. The same MAE/RMSE/bias equations apply in native channel units. Valid
-counts refer to eligible finite pairs; unmeasured channels stay null with count zero. These are
-**measurement agreement**, not simulated-truth or latent-physical-state errors. Delay can already
-make all current rows unobserved at decision time, even without artificial masking.
+Offline replay uses separate metric names; all compare estimates to measurements, not physical
+truth. For channel i and physical row k, let y[k] be its finite original measurement, p[k] the
+prediction before receiving the current batch, and q[k] the estimate after it. A component mask
+m[k,i] is drawn at **generation row k** using a fixed seed, shared across methods. A delayed packet
+from g arrives at k=g+delay_rows. Actual timestamp differences drive prediction, even for irregular
+rows; estimator history and age gates remain original-row counts.
+
+- `measurement_agreement_*`: error q[k]-y[k] for all finite pairs, including assimilated targets.
+- `preupdate_agreement_*`: p[k]-y[k], before the current arrival batch; past arrivals may be used.
+- `heldout_agreement_*`: q[k]-y[k] on m[k,i]=true, **zero delay only**. The channel's current
+  target was artificially withheld. This is conditional masking, not a separate dataset or site.
+- `masked_target_prediction_agreement_*`: q[k]-y[k] on m[k,i]=true at any delay. At positive
+  delay all current targets are unavailable by timing, masked or not. This name preserves that
+  distinction; it must not be interpreted as an independent-test accuracy gain.
+
+Use the same MAE/RMSE/bias formulas above; counts include finite eligible pairs only. Positive-delay
+`heldout_agreement` has null statistics and count 0, with an availability reason in metadata.
+Unmapped/missing targets also yield null/count 0, never fabricated scores. Masked targets cannot
+be assimilated at/before their own evaluation timestamp. A configurable, independently seeded
+whole-packet loss process is separate from component masking. Pending rows at the horizon exclude
+already lost packets.
+
+`estimator_events.csv` records each component's generation, receipt, update target, assimilation
+flag, gain (fixed-gain) or effective R/trust (EKF). Cache acceptance is not assimilation: model-only
+never assimilates, zero gain does not assimilate, rejection does not assimilate, and a component
+superseded in the same batch does not enter the final update. Packet summaries have no channel
+and are not component assimilation records. A replay trajectory also records current state/evaluation
+timestamps and actual assimilated source rows/timestamps. These incremental records plus the full
+past event history identify the information available for each estimate; bounded EKF repropagation
+reuses previously received updates without rewriting earlier saved trajectory rows.
+
+## Evidence layers and transport counts (2.1)
+
+`sensor_fault_configured` means a window is active. `sampled` means sampling ran.
+`sensor_fault_active` and per-channel `fault_label_*` mean an injection/bias/dropout was applied
+to an actual sample; they are evaluator exposure labels, not proof a value changed or a fault was
+diagnosed. `random_dropout_*` and `sensor_missing_*` are realized generation events, false when
+unsampled. `received_fault_exposure_*` follows the source packet's generation label at receipt,
+including delayed missing components. Health and estimator records are separate causal evidence.
+Baseline noise alone is not a fault. No diagnostic consumes evaluator fault labels.
+
+Per-link terminal counts are `delivered`, `packet_loss`, `expired`, `disconnected_at_send`,
+`disconnected_at_receive`, and `pending_at_horizon`: their counts sum to sent attempts.
+The legacy `lost_message_count` is an aggregate of all unsuccessful resolved attempts, **including
+expired/disconnected**, not just Bernoulli loss. `received_message_count` equals delivered count.
+Bytes remain application payload proxies. Outage-conditioned stale duration and safe-range violation
+duration are dt times the intersection of the respective condition with each link's outage mask.
+Commands, due processing status and actual actuator outputs are separate; actual outputs are now
+also recorded per execution event. Pending commands have no invented execution event. Continuity
+remains an architectural loop-execution fraction, commonly 1 by construction; it is not evidence of
+hardware uptime or environmental safety.

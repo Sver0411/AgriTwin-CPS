@@ -55,7 +55,11 @@ def recovery_events(frame: pd.DataFrame, config: SimulationConfig) -> pd.DataFra
             if start >= len(frame):
                 continue
             stop = min(len(frame), merged[index + 1][0] if index + 1 < len(merged) else len(frame))
-            delay = dwell_recovery(good, end, config.controller.recovery_dwell_steps, stop)
+            delay = (
+                dwell_recovery(good, end, config.controller.recovery_dwell_steps, stop)
+                if kind != "remote"
+                else None
+            )
             sync = None
             sync_errors = {f"sync_error_{c}": None for c in CHANNELS}
             if kind == "remote":
@@ -80,7 +84,8 @@ def recovery_events(frame: pd.DataFrame, config: SimulationConfig) -> pd.DataFra
                     "estimation_recovery_seconds": None
                     if delay is None
                     else delay * config.dt_seconds,
-                    "estimation_recovery_censored": delay is None,
+                    "estimation_recovery_censored": delay is None if kind != "remote" else None,
+                    "estimation_recovery_applicable": kind != "remote",
                     "remote_resync_seconds": sync,
                     "remote_resync_censored": sync is None if kind == "remote" else None,
                     **sync_errors,
@@ -93,6 +98,7 @@ def recovery_events(frame: pd.DataFrame, config: SimulationConfig) -> pd.DataFra
         "observation_stop_step",
         "estimation_recovery_seconds",
         "estimation_recovery_censored",
+        "estimation_recovery_applicable",
         "remote_resync_seconds",
         "remote_resync_censored",
         *[f"sync_error_{c}" for c in CHANNELS],
@@ -107,7 +113,10 @@ def compute_metrics(
     output: dict[str, float | int | None] = {"horizon_seconds": len(f) * dt}
     masks = {
         "sensor_fault": f.sensor_fault_active.to_numpy(),
+        "sensor_fault_window": f.sensor_fault_configured.to_numpy(),
         "communication_outage": (f.local_outage | f.remote_outage).to_numpy(),
+        "local_outage": f.local_outage.to_numpy(),
+        "remote_outage": f.remote_outage.to_numpy(),
     }
     outside = []
     bounds = (
@@ -156,6 +165,10 @@ def compute_metrics(
     output["pending_actuator_command_count"] = len(f) - len(statuses)
     for link in ("local", "remote"):
         outage = f[f"{link}_outage"]
+        output[f"safe_range_violation_during_{link}_outage_seconds"] = int(
+            (np.any(outside, axis=0) & outage).sum() * dt
+        )
+        output[f"stale_local_data_during_{link}_outage_seconds"] = int((stale & outage).sum() * dt)
         output[f"local_continuity_during_{link}_outage"] = (
             float(f.loc[outage, "local_control_executed"].mean()) if outage.any() else None
         )
@@ -167,7 +180,9 @@ def compute_metrics(
         output[f"{kind}_recovery_event_count"] = len(events)
         valid = events.estimation_recovery_seconds.dropna()
         output[f"{kind}_estimation_recovery_seconds"] = float(valid.mean()) if len(valid) else None
-        output[f"{kind}_recovery_censored_count"] = int(events.estimation_recovery_censored.sum())
+        output[f"{kind}_recovery_censored_count"] = (
+            int(events.estimation_recovery_censored.sum()) if kind != "remote" else None
+        )
         if kind == "remote":
             valid = events.remote_resync_seconds.dropna()
             output["remote_resync_seconds"] = float(valid.mean()) if len(valid) else None

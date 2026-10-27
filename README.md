@@ -27,6 +27,7 @@ requires no greenhouse hardware and makes no claim of agronomic suitability, nov
 | Sensor faults, independent local/remote message links, recovery | Implemented; tested in simulation |
 | Seven experiment groups, paired seeds, CSV/JSON/PNG artifacts | Implemented; tested in simulation |
 | Optional Streamlit experiment laboratory and exports | Implemented; tested with Streamlit AppTest |
+| Independent offline 3D greenhouse viewer | Implemented; typed artifact adapter, tested replay controls, browser-checked WebGL scene |
 | Heuristic sensor health, EKF/trust-EKF, bounded delayed-state replay | Implemented; tested in simulation |
 | Five sampling policies and local sample/byte budgets | Implemented; paired simulation experiments |
 | CSV import, chronological measurement replay, estimator comparisons | Implemented; tested |
@@ -208,3 +209,36 @@ This is application-layer message simulation, not validation of a real wireless 
 
 Generated results remain local under the ignored `results/` directory. No generated benchmark
 outcomes, credentials or hardware measurements are distributed as source data. MIT licensed.
+
+## Offline 3D viewer
+
+The independent viewer loads saved experiments; Streamlit continues to configure and execute
+research runs. No second climate model or real-time service is introduced.
+
+```bash
+cd frontend
+npm ci
+npm run dev -- --port 5173
+# http://127.0.0.1:5173/
+npm test
+npm run format:check
+npm run build
+```
+
+Node 22.23.0 is the reference version. Click **加载仿真示例** for a saved synthetic 96-step
+seed-11 run, or select one run's `trajectory.csv`, configuration, metadata and optional event CSVs.
+Play, step, seek and jump to events; click device markers for recorded measurements, health,
+commands and actual actions. One playback index synchronizes all panels and chart cursors.
+Missing fields remain unavailable; measurement replay has no invented truth. The greenhouse
+layout is schematic, without calibrated spatial climate fields or physical hardware synchronization.
+See [viewer instructions](frontend/README.md) and [artifact/time semantics](docs/FRONTEND_DATA.md).
+
+Artifact semantics 2.1 separates sampled fault exposure from configured windows, records actual
+per-component assimilation, distinguishes link statuses, and reports remote resynchronization
+separately from local estimate recovery. Positive-delay legacy `heldout_agreement` is unavailable;
+`masked_target_prediction_agreement` names the same-time masked-target comparison explicitly.
+Historical results and negative outcomes are preserved; see [results](docs/RESULTS.md).
+
+The CI workflow runs frozen Python installation/tests/Ruff and locked frontend installation,
+tests/format/type checking/production build. Local verification uses the same commands; inspect GitHub Actions for
+the status of remote runs.

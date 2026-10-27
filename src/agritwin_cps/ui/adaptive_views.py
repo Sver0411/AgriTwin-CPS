@@ -449,7 +449,8 @@ def data_replay(project_root: Path, results_root: Path):
         st.json(json.loads((directory / "metrics.json").read_text()))
         st.caption(
             "measurement_agreement 含已同化观测，不代表独立预测精度；preupdate 为更新前一致性，"
-            "heldout 仅评价人为遮蔽且原值存在的分量。格式样例不构成公开数据验证。"
+            "heldout 仅用于零延迟的人工遮蔽分量；延迟时改用 "
+            "masked_target_prediction_agreement。二者都不是物理真值误差。"
         )
         with st.expander("回放配置、来源与导出"):
             st.json(json.loads((directory / "metadata.json").read_text()))

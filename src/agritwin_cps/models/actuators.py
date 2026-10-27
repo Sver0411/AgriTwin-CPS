@@ -40,6 +40,8 @@ class Actuator:
                     "status": status,
                     "ventilation": requested.ventilation,
                     "irrigation": requested.irrigation,
+                    "actual_ventilation": values[0],
+                    "actual_irrigation": values[1],
                 }
             )
         self.pending = remaining

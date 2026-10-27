@@ -82,7 +82,7 @@ The test is a **measurement** consistency comparison with constant assumed forci
 validation or latent-truth estimation accuracy. Temperature only is measured; humidity/moisture
 accuracy is N/A. The fixed-gain baseline is the paired reference in exported differences.
 
-| Estimator | Unmodified delivery: posterior MAE (°C) | 20% masking + 2-row delay: posterior MAE, mean ± SD | Same case: pre-update MAE, mean ± SD | Same case: masked-component MAE, mean ± SD |
+| Estimator | Unmodified delivery: posterior MAE (°C) | 20% masking + 2-row delay: posterior MAE, mean ± SD | Same case: pre-update MAE, mean ± SD | Same case: masked-target prediction MAE, mean ± SD |
 |---|---:|---:|---:|---:|
 | observation_corrected | 0.4657 | 1.6068 ± 0.0254 | 1.7331 ± 0.0258 | 1.6213 ± 0.1217 |
 | model_only | 5.2825 | 5.2825 ± 0.0000 | 5.2825 ± 0.0000 | 5.2660 ± 0.4107 |
@@ -91,8 +91,10 @@ accuracy is N/A. The fixed-gain baseline is the paired reference in exported dif
 
 Unmodified-delivery SD across seeds is zero because the record and delivery are deterministic;
 heldout metrics are N/A there. Seed variation describes artificial masks, not independent sites.
-Posterior agreement includes measurements already assimilated. The pre-update and heldout columns
-reduce that ambiguity but still compare with noisy observations. Trust-EKF **underperforms** the
+Posterior agreement includes measurements already assimilated. Pre-update agreement compares
+before the current arrival batch. The positive-delay masked-target column selects an artificial
+mask at the current physical row, whose measurement has not yet arrived even without masking;
+it is not independent heldout validation. Both still compare with noisy observations. Trust-EKF **underperforms** the
 fixed-gain baseline and ordinary EKF here. Plausible causes include unmodeled forcing, mismatch,
 uncalibrated noise and rejection of real dynamics. Those mechanisms require separate ablations;
 this experiment does not identify a unique cause or justify final-set tuning.
@@ -100,3 +102,55 @@ this experiment does not identify a unique cause or justify final-set tuning.
 Remaining work is to map/align measured forcing and actions, calibrate on separate data, reserve
 new unseen evaluation records, and examine diagnosis sensitivity. There is no hardware reliability,
 real-world energy/crop benefit or claim that the new methods universally improve control.
+
+## Credibility fixes and offline viewer (2026-10-27)
+
+Current evidence is under `results/credibility_3d_validation/current/`; earlier `v2_validation/`
+artifacts are retained. This is a regression audit, not a new untouched public-data evaluation.
+The package remains 2.0.0 and artifact semantics advance to 2.1; use actual saved source hashes
+rather than the package version alone to identify the implementation.
+
+Confirmed and corrected:
+
+- Time-indexed dropout draws on **unsampled** steps incorrectly activated sensor fault labels.
+  Now configured windows, generated exposure/missingness, received exposure, health diagnosis
+  and actual component assimilation have distinct records. Prior fault-conditioned statistics
+  and diagnosis denominators from sparse sampling must be recomputed before reuse. The old
+  sampled-count/resource/overall-error numbers are retained, not silently relabelled.
+- The replay mask and error had the same physical row; no arithmetic off-by-one was found.
+  However, positive-delay `heldout_agreement` concealed that all current targets were delayed.
+  It now has null statistics/count zero at positive delay. Explicit
+  `masked_target_prediction_agreement` preserves the original conditional numerical calculation.
+  Generation/arrival/state/evaluation timestamps and per-component assimilation are recorded.
+  Arrival or cache acceptance alone does not prove a measurement was used. Superseded EKF batch
+  components are recorded as not assimilated; numerical estimation equations are unchanged.
+- Pooled outage errors were insufficient to identify local versus remote link behavior. Both
+  now have separate error, stale-data and violation metrics. Remote local-estimation recovery
+  was an inappropriate interpretation and is now N/A; remote resynchronization/censoring remains.
+  Six explicit terminal transport statuses separate random loss, expiry, disconnection and pending
+  messages. Actuator events now retain actual output as well as requests/status.
+- No public-data split/timezone/raw-value change was justified. Saved source and prepared hashes
+  match the preparation audit, development/final UTC ranges are nonoverlapping, and raw files
+  remain unchanged. The timezone remains an assumption, not independently verified station metadata.
+
+Executed again: nominal 48 steps, sensor fault and remote outage 288 steps; default full
+five-seed/two-controller comparison (10 runs, 576 steps each); sampling comparison (15 runs,
+288 steps, seeds 11/22/33); and frozen public-temperature comparison (40 replay runs, 859 rows,
+seeds 101/202/303/404/505) in `public_final_semantics21/`. A separate 24-run, three-seed regression
+check in `public_final/` is retained but is not the frozen final protocol. An earlier 40-run
+instrumentation audit also remains in the parent validation directory.
+
+`regression_evidence.json` checks saved aggregate means against per-seed CSVs for all three
+comparisons. The frozen public posterior/pre-update statistics equal the previous values, and
+new masked-target MAE/RMSE/bias/count equal the old conditional masked calculation. The table
+above therefore retains its numbers with a corrected label, now backed by regenerated CSVs
+and plots. Trust-EKF still underperforms: delayed posterior MAE 4.7809 ± 0.0140 °C versus
+fixed-gain 1.6068 ± 0.0254 °C. No final-set retuning was performed. Earlier A–H groups not rerun
+here retain their historical source/version and are not evidence for changed conditional metrics.
+
+The 96-step seed-11 viewer demo is an actual synthetic run saved in `current/demo_semantics21/`, exported
+with config/metadata/events into `frontend/public/demo/`. It is a user-interface example, not
+research evidence for superiority. WebGL rendering, sensor/actuator picking, timeline seeking,
+play/pause, recovery-event jump and local multi-file public replay import are checked in-browser.
+The latter displays 859 measurement frames and no simulated-truth curve. The scene is schematic,
+not a spatially calibrated greenhouse. See FRONTEND_DATA.md for the exact interface contract.

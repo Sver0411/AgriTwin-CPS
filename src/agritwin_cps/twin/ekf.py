@@ -63,6 +63,7 @@ class ExtendedKalmanEstimator:
         if step != self.step:
             raise ValueError("EKF correction must follow chronological prediction steps")
         earliest = step
+        first_event = len(self.events)
         used = np.zeros(3, dtype=bool)
         for packet in sorted(packets, key=lambda p: p.generated_step):
             timestamp = packet.generated_step
@@ -79,37 +80,91 @@ class ExtendedKalmanEstimator:
                     reason = "ignored_outside_history"
             if reason.startswith("ignored"):
                 self.events.append(
-                    dict(received_step=step, generated_step=timestamp, reason=reason)
+                    dict(
+                        received_step=step,
+                        generated_step=timestamp,
+                        reason=reason,
+                        assimilated=False,
+                    )
                 )
                 continue
             accepted = False
             for i, value in enumerate(packet.values):
                 if not np.isfinite(value) or not LOWER[i] <= value <= UPPER[i]:
+                    self.events.append(
+                        dict(
+                            received_step=step,
+                            generated_step=timestamp,
+                            channel_index=i,
+                            reason="invalid_component",
+                            assimilated=False,
+                        )
+                    )
                     continue
                 existing = self.updates.setdefault(target, {})
                 # For replay, older observations can improve history without replacing newer ages.
                 if (target != step and i in existing) or (
                     target == step and timestamp <= self.timestamps[i]
                 ):
+                    self.events.append(
+                        dict(
+                            received_step=step,
+                            generated_step=timestamp,
+                            channel_index=i,
+                            reason="duplicate_or_out_of_order",
+                            assimilated=False,
+                        )
+                    )
                     continue
                 trust = 1.0
                 if self.config.method == "trust_ekf":
                     trust = (weights or {}).get(timestamp, np.ones(3))[i]
                 if trust < self.config.min_update_trust:
                     self.events.append(
-                        dict(received_step=step, generated_step=timestamp, reason=f"low_trust_{i}")
+                        dict(
+                            received_step=step,
+                            generated_step=timestamp,
+                            reason=f"low_trust_{i}",
+                            channel_index=i,
+                            assimilated=False,
+                        )
                     )
                     continue
                 variance = self.config.measurement_std[i] ** 2 / trust**2
                 if target == step and timestamp < step:
                     variance *= (1 + step - timestamp) ** 2
+                # Only the final component stored at a target enters the batch update.
+                for earlier in self.events[first_event:]:
+                    if (
+                        earlier.get("assimilated")
+                        and earlier.get("channel_index") == i
+                        and earlier.get("target_step") == target
+                    ):
+                        earlier.update(assimilated=False, reason="superseded_in_batch")
+                self.events.append(
+                    dict(
+                        received_step=step,
+                        generated_step=timestamp,
+                        channel_index=i,
+                        target_step=target,
+                        reason=reason,
+                        assimilated=True,
+                        effective_variance=float(variance),
+                        trust=float(trust),
+                    )
+                )
                 existing[i] = (value, variance)
                 self.timestamps[i] = max(self.timestamps[i], timestamp)
                 used[i] = accepted = True
             if accepted:
                 earliest = min(earliest, target)
                 self.events.append(
-                    dict(received_step=step, generated_step=timestamp, reason=reason)
+                    dict(
+                        received_step=step,
+                        generated_step=timestamp,
+                        reason=reason,
+                        assimilated=False,
+                    )
                 )
         state, covariance = self.priors[earliest]
         for historical in range(earliest, step + 1):

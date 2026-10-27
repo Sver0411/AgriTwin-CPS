@@ -113,3 +113,28 @@ EKF 的 `replay_history_steps` 为独立历史回放开关，0 表示关闭；�
 可导出 CSV/JSON 或准备完整 ZIP；界面不会上传数据。CLI 复现方式保持不变。
 生成结果保留在本地 `results/`，默认不提交到 Git。
 详细英文技术说明、公式、单位、研究协议和局限性见 [英文 README](README.md) 与 [docs](docs/ARCHITECTURE.md)。
+
+## 独立三维回放界面
+
+三维界面用于查看已保存的实验；Streamlit 继续负责配置、运行和科研分析。需要 Node 22.23.0：
+
+```bash
+cd frontend
+npm ci
+npm run dev -- --port 5173
+npm test
+npm run format:check
+npm run build
+```
+
+打开 http://127.0.0.1:5173/，选择“加载仿真示例”，或同时选择单次运行目录中的
+`trajectory.csv`、配置、元数据和事件 CSV。支持旋转、缩放、点击设备、播放、暂停、
+逐步前进/后退、拖动时间轴和点击事件跳转。状态卡片、场景、详情及曲线光标使用同一帧。
+示例来自实际运行的 Python 仿真，不是真实温室测量。没有的数据显示“暂无数据”；
+测量回放不显示不存在的仿真真值。温室位置仅为示意，不表示空间温湿度分布。
+
+本阶段修复了未采样时误报随机故障的问题，记录观测实际同化情况，分离本地与远程中断指标，
+远程恢复只评价遥测重新同步。正延迟场景的旧 `heldout_agreement` 标为不可用，改用明确命名的
+`masked_target_prediction_agreement` 表达同刻人工遮蔽目标误差；它仍不是物理真值精度。
+旧实验和不利结果保留。详细说明见 [界面说明](frontend/README.md)、
+[数据接口](docs/FRONTEND_DATA.md) 和 [结果边界](docs/RESULTS.md)。

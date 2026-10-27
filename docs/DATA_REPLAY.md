@@ -19,7 +19,7 @@ requires a frozen development-end boundary. Boundaries without timezones mean UT
 separation of selected rows, not researchers' freedom from prior exposure or tuning leakage.
 
 Replay delivers rows chronologically, preserves original timestamps, injects seeded per-component
-masking and a fixed delay measured in **rows**, and uses the same estimator/health implementation
+masking, optional independently seeded whole-packet loss, and a fixed delay measured in **rows**, and uses the same estimator/health implementation
 as simulation. EKF history/expiry/age settings also use rows. Actual time differences drive physical
 prediction, using at most 300-second integration substeps and stored elapsed-time feedback during
 historical replay. A configurable maximum gap rejects unintended long propagation.
@@ -29,8 +29,11 @@ evapotranspiration, ventilation and irrigation are explicit **constant assumed i
 release does not map dataset weather/actuator columns into the proxy model. It is a measurement
 consistency experiment under incomplete forcing, not a calibrated greenhouse hindcast.
 
-Metrics distinguish posterior measurement agreement, pre-update agreement and agreement on
-artificially withheld components whose original measurement exists. Posterior agreement includes
+Metrics distinguish posterior measurement agreement, pre-update agreement and artificial
+masked-target agreement at the same physical row. `heldout_agreement` is available only at zero
+delay; positive-delay cases instead use `masked_target_prediction_agreement`. The older positive-
+delay heldout label was ambiguous, not an arithmetic mask shift. Actual per-channel assimilation
+and source/evaluation timestamps are now saved; receipt alone does not establish use. Posterior agreement includes
 assimilated measurements and is not independent prediction accuracy. Masked comparisons use
 identical masks for paired methods/seeds. The same physical record across seeds is not independent
 field replication. There is no empirical precision/recall claim without annotated fault truth.
