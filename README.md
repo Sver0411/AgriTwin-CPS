@@ -2,7 +2,7 @@
 
 **Simulation-Based Greenhouse Digital Twin and Cyber-Physical Systems Research Platform**
 
-[中文说明](README.zh-CN.md)
+[中文说明](README.zh-CN.md) · [**Live 3D Greenhouse Viewer Demo**](https://sver0411.github.io/AgriTwin-CPS/)
 
 AgriTwin-CPS is a reproducible, simulation-based research platform for greenhouse digital twins
 and cyber-physical systems. It models greenhouse environmental dynamics, maintains an estimated
