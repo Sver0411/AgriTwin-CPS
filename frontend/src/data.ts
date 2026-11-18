@@ -378,12 +378,12 @@ export async function readFiles(
   return adapt(contents);
 }
 export async function loadDemo(): Promise<Run> {
-  const response = await fetch("/demo/manifest.json");
+  const response = await fetch("./demo/manifest.json");
   if (!response.ok) throw new Error("演示清单读取失败");
   const names: string[] = await response.json();
   const files: Record<string, string> = {};
   for (const name of names) {
-    const r = await fetch(`/demo/${name}`);
+    const r = await fetch(`./demo/${name}`);
     if (!r.ok) throw new Error(`演示文件读取失败：${name}`);
     files[name] = await r.text();
   }
