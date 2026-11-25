@@ -242,3 +242,23 @@ Historical results and negative outcomes are preserved; see [results](docs/RESUL
 The CI workflow runs frozen Python installation/tests/Ruff and locked frontend installation,
 tests/format/type checking/production build. Local verification uses the same commands; inspect GitHub Actions for
 the status of remote runs.
+
+## Closed-Loop Architecture
+
+```mermaid
+flowchart LR
+    ENV["Greenhouse Thermal-Humidity Plant"] --> SENS["Noisy / Faulty Sensors"]
+    SENS --> EKF["Trust-Aware State Estimator (EKF)"]
+    EKF --> CTRL["Closed-Loop Actuator Controller"]
+    CTRL --> ENV
+    EKF --> WEB["Live 3D WebGL Digital Twin Viewer"]
+```
+
+## Part of the 4-Layer AIoT Research Stack
+
+`AgriTwin-CPS` belongs to **L4 · Resilience & CPS Validation** of a reproducible AIoT systems stack:
+
+- **L1 · Reliable Sensing:** [SensorTrust](https://github.com/Sver0411/SensorTrust) (C11 zero-allocation sensor health monitoring)
+- **L2 · Adaptive Observation:** [AdaptiveSense](https://github.com/Sver0411/AdaptiveSense) · [TAIS](https://github.com/Sver0411/TAIS) (closed-loop trust-aware scheduling & boundary analysis)
+- **L3 · Freshness & Lossy Links:** [EventGuard-LoRa](https://github.com/Sver0411/EventGuard-LoRa) · [NetAdapt-IoT](https://github.com/Sver0411/NetAdapt-IoT) · [IoT-MPQUIC-Scheduler](https://github.com/Sver0411/IoT-MPQUIC-Scheduler)
+- **L4 · Resilience & CPS Validation:** [EdgeFaultLab](https://github.com/Sver0411/EdgeFaultLab) · [TinyEdgeBench](https://github.com/Sver0411/TinyEdgeBench) · [Smart-Agriculture-Edge-AI](https://github.com/Sver0411/Smart-Agriculture-Edge-AI) · [AgriTwin-CPS](https://github.com/Sver0411/AgriTwin-CPS)
